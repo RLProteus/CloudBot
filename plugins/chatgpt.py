@@ -4,11 +4,10 @@ import requests
 
 
 @hook.command("gpt", autohelp=False)
-def chat_gpt(api_key, nick, chan, message):
+def chat_gpt(nick, chan, text):
     prompt = (
-        f"Answer the following question from user {nick} on IRC channel {chan}.\n"
-        f"Your answer must not be longer than 500 character.\n"
-        f"{message}\n"
+        f"Answer the following message from user {nick} on IRC channel {chan}.\n"
+        f"{text}\n"
     )
     api_key = bot.config.get_api_key("openai")
     resp = requests.post("https://api.openai.com/v1/completions",
@@ -18,7 +17,7 @@ def chat_gpt(api_key, nick, chan, message):
                            json={
                                "model": "text-davinci-003",
                                "prompt": prompt,
-                               "max_tokens": 2048,
+                               "max_tokens": 100,
                                "temperature": 1,
                                "n": 1,
                                "stream": False,
@@ -26,8 +25,6 @@ def chat_gpt(api_key, nick, chan, message):
                            }
     )
     if resp.status_code == 200:
-        msg = resp.json()["choices"][0]["text"].replace("\n","")
-        print(msg)
+        return resp.json()["choices"][0]["text"].replace("\n","")
     else:
-        print(f"ChatGPT failed with error code {resp.status_code} and message {resp.json()}") 
-    
+         return f"ChatGPT failed with error code {resp.status_code} and message {resp.json()}"
