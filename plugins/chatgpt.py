@@ -1,11 +1,31 @@
 from cloudbot import hook
 from cloudbot.bot import bot
+from datetime import datetime, timedelta
 import requests
 import textwrap
 
 
+RATELIMIT = {}
+
+def check_rate_limit(nick):
+    print(RATELIMIT)
+    if RATELIMIT.get(nick, False) == False:
+        return True
+    time_difference = abs(datetime.now() - RATELIMIT.get(nick))
+    if time_difference.seconds > 300:
+        return True
+    time_left =  (RATELIMIT.get(nick) + timedelta(minutes=5)) - datetime.now()
+    return f"You are rate limited ! Try again in {time_left.seconds} seconds !"
+
+def add_to_rate_limit(nick):
+    RATELIMIT[nick] = datetime.now()
+    pass
+
 @hook.command("gpt", autohelp=False)
 def chat_gpt(nick, chan, text):
+    rate_limit = check_rate_limit(nick)
+    if rate_limit != True:
+        return rate_limit
     prompt = (
         f"{nick} on IRC channel {chan} says: {text}\n"
     )
@@ -24,6 +44,7 @@ def chat_gpt(nick, chan, text):
                                "user": f"{hash(nick)}",
                            }
     )
+    add_to_rate_limit(nick)
     if resp.status_code == 200:
         answer = resp.json()["choices"][0]["text"].replace("\n","")
         messages = textwrap.wrap(answer,250)
