@@ -8,7 +8,6 @@ import textwrap
 RATELIMIT = {}
 
 def check_rate_limit(nick):
-    print(RATELIMIT)
     if RATELIMIT.get(nick, False) == False:
         return True
     time_difference = abs(datetime.now() - RATELIMIT.get(nick))
@@ -49,7 +48,6 @@ def chat_gpt(nick, chan, text):
         answer = resp.json()["choices"][0]["text"].replace("\n","")
         messages = textwrap.wrap(answer,250)
         if len(messages) > 2:
-            # Send the prompt to hastebin
             hastebin_api_key = bot.config.get_api_key("hastebin")
             hastebin_resp = requests.post("https://hastebin.com/documents",
                                           headers={
@@ -59,7 +57,6 @@ def chat_gpt(nick, chan, text):
                                           data="\n".join(messages)
             )
             if hastebin_resp.status_code == 200:
-                # Return first 2 blocks, then direct to hastebin
                 truncated_resp = messages[0:2]
                 truncated_resp.append(f"Find the rest of the answer here: https://hastebin.com/share/{hastebin_resp.json()['key']}") 
                 return truncated_resp
