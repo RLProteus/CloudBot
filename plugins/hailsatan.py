@@ -1,7 +1,7 @@
 from cloudbot import hook
 import re
 
-message = re.compile(r'(?i)http.*?\s666')
+message = re.compile(r'(?<!http\s)666', re.IGNORECASE)
 
 @hook.regex(message)
 def hailsatan(match, nick, chan, db, notice):
