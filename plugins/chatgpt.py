@@ -36,7 +36,7 @@ def get_system_message():
 def set_system_message(nick, chan, text, event):
     global SYSTEM
     SYSTEM = text
-    return f"System prompt has been updated to {text}"
+    return f"System prompt has been updated to {SYSTEM}"
 
 
 @hook.command("gpt", autohelp=False)
