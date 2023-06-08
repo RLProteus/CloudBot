@@ -28,24 +28,23 @@ def add_to_rate_limit(nick):
     RATELIMIT[nick] = datetime.now()
     pass
 
-@hook.command(".gpt-get-system")
+@hook.command("gpt_get_system")
 def get_system_message():
     return f"Current system message: {SYSTEM}"
 
-@hook.command(".gpt-set-system", permissions=["botcontrol"])
+@hook.command("gpt_set_system")
 def set_system_message(nick, chan, text, event):
+    global SYSTEM
     SYSTEM = text
-    return f"System prompt has been updated"
+    return f"System prompt has been updated to {text}"
 
 
 @hook.command("gpt", autohelp=False)
 def chat_gpt(nick, chan, text, event):
     rate_limit = check_rate_limit(nick, event)
-    #if rate_limit != True:
-        #return rate_limit
     prompt = "\n".join([
         SYSTEM,
-        f"{nick} on IRC channel {chan} says: {text}\n"
+        f"{nick} on IRC channel {chan} says: {text}"
     ])
     open_ai_api_key = bot.config.get_api_key("openai")
     resp = requests.post("https://api.openai.com/v1/chat/completions",
