@@ -60,7 +60,7 @@ def raise_api_errors(response: requests.Response) -> None:
 
 
 def make_short_url(video_id: str) -> str:
-    return "http://youtu.be/{}".format(video_id)
+    return f"https://youtu.be/{video_id}"
 
 
 ParamValues = Union[int, str]
@@ -113,13 +113,13 @@ def get_video_description(video_id: str) -> str:
     statistics = item["statistics"]
     content_details = item["contentDetails"]
 
-    out = "\x02{}\x02".format(snippet["title"])
+    out = "\x02 {}\x02".format(snippet["title"])
 
     if not content_details.get("duration"):
         return out
 
     length = isodate.parse_duration(content_details["duration"])
-    out += " - length \x02{}\x02".format(
+    out += " - length\x02 {}\x02".format(
         timeformat.format_time(int(length.total_seconds()), simple=True)
     )
     try:
@@ -133,16 +133,16 @@ def get_video_description(video_id: str) -> str:
         dislikes = pluralize_suffix(int(statistics["dislikeCount"]), "dislike")
 
         percent = 100 * float(statistics["likeCount"]) / total_votes
-        out += " - {}, {} (\x02{:.1f}\x02%)".format(likes, dislikes, percent)
+        out += " - {}, {} (\x02 {:.1f}\x02%)".format(likes, dislikes, percent)
 
     if "viewCount" in statistics:
         views = int(statistics["viewCount"])
-        out += " - \x02{:,}\x02 view{}".format(views, "s"[views == 1 :])
+        out += " -\x02 {:,}\x02 view{}".format(views, "s"[views == 1 :])
 
     uploader = snippet["channelTitle"]
 
     upload_time = isodate.parse_datetime(snippet["publishedAt"])
-    out += " - \x02{}\x02 on \x02{}\x02".format(
+    out += " -\x02 {}\x02 on\x02 {}\x02".format(
         uploader, upload_time.strftime("%Y.%m.%d")
     )
 

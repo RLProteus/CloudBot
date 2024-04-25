@@ -3,6 +3,7 @@ from cloudbot.bot import bot
 from datetime import datetime, timedelta
 import requests
 import textwrap
+import re
 
 
 RATELIMIT = {}
@@ -86,6 +87,14 @@ def chat_gpt(nick, chan, text, event):
         return messages
     else:
          return textwrap.wrap(
-             f"ChatGPT failed with error code {resp.status_code} and message: {resp.json()['error']['message']}",
+             f"ChatGPT failed with error code {resp.status_code}",
              250
          )
+
+#message = re.compile('^karmachameleon.*',re.IGNORECASE)
+#
+#
+#@hook.regex(message)
+#def chat_gpt_re(nick, chan, content, event):
+#    text = content.lower().split('karmachameleon')[1]
+#    return chat_gpt(nick, chan, text, event)
