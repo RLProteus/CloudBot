@@ -57,7 +57,7 @@ def get_hook_from_command(bot, hook_name):
     return possible[0] if len(possible) == 1 else None
 
 
-@hook.command(permissions=["botcontrol", "snoonetstaff"])
+@hook.command(permissions=["botcontrol", "chain-admin"])
 def chainallow(text, db, notice_doc, bot):
     """{add [hook] [{allow|deny}]|del [hook]} - Manage the allowed list fo comands for the chain command"""
     args = text.split()

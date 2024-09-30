@@ -1,20 +1,23 @@
 import math
 from fractions import Fraction
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import googlemaps
-from forecastiopy.ForecastIO import ForecastIO
+import pyowm
+from pyowm import OWM
 from googlemaps.exceptions import ApiError
-from sqlalchemy import Table, Column, PrimaryKeyConstraint, String
+from pyowm.weatherapi25.weather import Weather
+from sqlalchemy import Column, PrimaryKeyConstraint, String, Table
 
 from cloudbot import hook
-from cloudbot.util import web, database, colors
+from cloudbot.util import colors, database
 
 Api = Optional[googlemaps.Client]
 
 
 class PluginData:
     maps_api = None  # type: Api
+    owm_api: Optional[OWM] = None
 
 
 data = PluginData()
@@ -24,22 +27,31 @@ data = PluginData()
 table = Table(
     "weather",
     database.metadata,
-    Column('nick', String),
-    Column('loc', String),
-    PrimaryKeyConstraint('nick')
+    Column("nick", String),
+    Column("loc", String),
+    PrimaryKeyConstraint("nick"),
+    extend_existing=True
 )
 
-location_cache = []
+location_cache: List[Tuple[str, str]] = []
 
 BEARINGS = (
-    'N', 'NNE',
-    'NE', 'ENE',
-    'E', 'ESE',
-    'SE', 'SSE',
-    'S', 'SSW',
-    'SW', 'WSW',
-    'W', 'WNW',
-    'NW', 'NNW',
+    "N",
+    "NNE",
+    "NE",
+    "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE",
+    "S",
+    "SSW",
+    "SW",
+    "WSW",
+    "W",
+    "WNW",
+    "NW",
+    "NNW",
 )
 
 # math constants
@@ -89,17 +101,14 @@ class LocationNotFound(Exception):
 def find_location(location, bias=None):
     """
     Takes a location as a string, and returns a dict of data
-    :param location: string
-    :param bias: The region to bias answers towards
-    :return: dict
     """
     results = data.maps_api.geocode(location, region=bias)
     if not results:
         raise LocationNotFound(location)
 
     json = results[0]
-    out = json['geometry']['location']
-    out['address'] = json['formatted_address']
+    out = json["geometry"]["location"]
+    out["address"] = json["formatted_address"]
     return out
 
 
@@ -107,16 +116,21 @@ def add_location(nick, location, db):
     test = dict(location_cache)
     location = str(location)
     if nick.lower() in test:
-        db.execute(table.update().values(loc=location.lower()).where(table.c.nick == nick.lower()))
-        db.commit()
-        load_cache(db)
+        db.execute(
+            table.update()
+            .values(loc=location.lower())
+            .where(table.c.nick == nick.lower())
+        )
     else:
-        db.execute(table.insert().values(nick=nick.lower(), loc=location.lower()))
-        db.commit()
-        load_cache(db)
+        db.execute(
+            table.insert().values(nick=nick.lower(), loc=location.lower())
+        )
+
+    db.commit()
+    load_cache(db)
 
 
-@hook.on_start
+@hook.on_start()
 def load_cache(db):
     new_cache = []
     for row in db.execute(table.select()):
@@ -137,26 +151,39 @@ def create_maps_api(bot):
         data.maps_api = None
 
 
+@hook.on_start()
+def create_owm_api(bot):
+    owm_key = bot.config.get_api_key("openweathermap")
+    if owm_key:
+        data.owm_api = OWM(owm_key, pyowm.owm.cfg.get_default_config())
+    else:
+        data.owm_api = None
+
+
 def get_location(nick):
     """looks in location_cache for a saved location"""
     location = [row[1] for row in location_cache if nick.lower() == row[0]]
     if not location:
-        return
+        return None
 
-    location = location[0]
-    return location
+    return location[0]
 
 
 def check_and_parse(event, db):
     """
     Check for the API keys and parse the location from user input
     """
-    ds_key = event.bot.config.get_api_key("darksky")
-    if not ds_key:
-        return None, "This command requires a DarkSky API key."
-
     if not data.maps_api:
-        return None, "This command requires a Google Developers Console API key."
+        return (
+            None,
+            "This command requires a Google Developers Console API key.",
+        )
+
+    if not data.owm_api:
+        return (
+            None,
+            "This command requires a OpenWeatherMap API key.",
+        )
 
     # If no input try the db
     if not event.text:
@@ -171,7 +198,7 @@ def check_and_parse(event, db):
     # Change this in the config to a ccTLD code (eg. uk, nz)
     # to make results more targeted towards that specific country.
     # <https://developers.google.com/maps/documentation/geocoding/#RegionCodes>
-    bias = event.bot.config.get('location_bias_cc')
+    bias = event.bot.config.get("location_bias_cc")
     # use find_location to get location data from the user input
     try:
         location_data = find_location(location, bias=bias)
@@ -181,13 +208,15 @@ def check_and_parse(event, db):
     except LocationNotFound as e:
         return None, str(e)
 
-    fio = ForecastIO(
-        ds_key, units=ForecastIO.UNITS_US,
-        latitude=location_data['lat'],
-        longitude=location_data['lng']
+    owm_api = data.owm_api
+    wm = owm_api.weather_manager()
+    conditions = wm.one_call(
+        location_data['lat'],
+        location_data['lng'],
+        exclude="minutely,hourly"
     )
 
-    return (location_data, fio), None
+    return (location_data, conditions), None
 
 
 @hook.command("weather", "we", autohelp=False)
@@ -197,60 +226,60 @@ def weather(reply, db, triggered_prefix, event):
     if not res:
         return err
 
-    location_data, fio = res
-
-    daily_conditions = fio.get_daily()['data']
-    current = fio.get_currently()
+    location_data, owm = res
+    daily_conditions: List[Weather] = owm.forecast_daily
+    current: Weather = owm.current
     today = daily_conditions[0]
-    wind_speed = current['windSpeed']
-    today_high = today['temperatureHigh']
-    today_low = today['temperatureLow']
-    current.update(
-        name='Current',
-        wind_direction=bearing_to_card(current['windBearing']),
-        wind_speed_mph=wind_speed,
-        wind_speed_kph=mph_to_kph(wind_speed),
-        summary=current['summary'].rstrip('.'),
-        temp_f=round_temp(current['temperature']),
-        temp_c=round_temp(convert_f2c(current['temperature'])),
-        temp_high_f=round_temp(today_high),
-        temp_high_c=round_temp(convert_f2c(today_high)),
-        temp_low_f=round_temp(today_low),
-        temp_low_c=round_temp(convert_f2c(today_low)),
-    )
+    wind_mph = current.wind('miles_hour')
+    wind_speed = wind_mph['speed']
+    today_temp = today.temperature('fahrenheit')
+    today_high = today_temp['max']
+    today_low = today_temp['min']
+    current_temperature = current.temperature('fahrenheit')['temp']
+    current_data = {
+        'name': "Current",
+        'wind_direction': bearing_to_card(wind_mph['deg']),
+        'wind_speed_mph': wind_speed,
+        'wind_speed_kph': mph_to_kph(wind_speed),
+        'summary': current.status,
+        'temp_f': round_temp(current_temperature),
+        'temp_c': round_temp(convert_f2c(current_temperature)),
+        'temp_high_f': round_temp(today_high),
+        'temp_high_c': round_temp(convert_f2c(today_high)),
+        'temp_low_f': round_temp(today_low),
+        'temp_low_c': round_temp(convert_f2c(today_low)),
+        'humidity': current.humidity / 100,
+    }
 
     parts = [
-        ('Current', "{summary}, {temp_f}F/{temp_c}C"),
-        ('High', "{temp_high_f}F/{temp_high_c}C"),
-        ('Low', "{temp_low_f}F/{temp_low_c}C"),
-        ('Humidity', "{humidity:.0%}"),
-        ('Wind', "{wind_speed_mph:.0f}MPH/{wind_speed_kph:.0f}KPH {wind_direction}"),
+        ("Current", "{summary}, {temp_f}F/{temp_c}C"),
+        ("High", "{temp_high_f}F/{temp_high_c}C"),
+        ("Low", "{temp_low_f}F/{temp_low_c}C"),
+        ("Humidity", "{humidity:.0%}"),
+        (
+            "Wind",
+            "{wind_speed_mph:.0f}MPH/{wind_speed_kph:.0f}KPH {wind_direction}",
+        ),
     ]
 
-    current_str = '; '.join(
-        colors.parse('$(b){}$(b): {}$(clear)'.format(part[0], part[1]))
+    current_str = "; ".join(
+        colors.parse("$(b){}$(b): {}$(clear)".format(part[0], part[1]))
         for part in parts
-    )
-
-    url = web.try_shorten(
-        'https://darksky.net/forecast/{lat:.3f},{lng:.3f}'.format_map(
-            location_data
-        )
     )
 
     reply(
         colors.parse(
             "{current_str} -- "
             "{place} - "
-            "$(ul){url}$(clear) "
             "($(i)To get a forecast, use {cmd_prefix}fc$(i))"
         ).format(
-            place=location_data['address'],
-            current_str=current_str.format_map(current),
-            url=url,
+            place=location_data["address"],
+            current_str=current_str.format_map(current_data),
             cmd_prefix=triggered_prefix,
         )
     )
+
+    return None
 
 
 @hook.command("forecast", "fc", autohelp=False)
@@ -260,58 +289,64 @@ def forecast(reply, db, event):
     if not res:
         return err
 
-    location_data, fio = res
+    location_data, owm = res
 
-    daily_conditions = fio.get_daily()['data']
+    one_call = owm
+    daily_conditions = one_call.forecast_daily
     today, tomorrow, *three_days = daily_conditions[:5]
 
-    today['name'] = 'Today'
-    tomorrow['name'] = 'Tomorrow'
+    today_data = {
+        'data': today,
+    }
+    tomorrow_data = {
+        'data': tomorrow
+    }
+    three_days_data = [{'data': d} for d in three_days]
+    today_data["name"] = "Today"
+    tomorrow_data["name"] = "Tomorrow"
 
-    for day_fc in (today, tomorrow):
-        wind_speed = day_fc['windSpeed']
+    for day_fc in (today_data, tomorrow_data):
+        wind_speed = day_fc['data'].wind('miles_hour')
         day_fc.update(
-            wind_direction=bearing_to_card(day_fc['windBearing']),
-            wind_speed_mph=wind_speed,
-            wind_speed_kph=mph_to_kph(wind_speed),
-            summary=day_fc['summary'].rstrip('.'),
+            wind_direction=bearing_to_card(wind_speed['deg']),
+            wind_speed_mph=wind_speed['speed'],
+            wind_speed_kph=mph_to_kph(wind_speed['speed']),
+            summary=day_fc['data'].status,
         )
 
-    for fc_data in (today, tomorrow, *three_days):
-        high = fc_data['temperatureHigh']
-        low = fc_data['temperatureLow']
+    for fc_data in (today_data, tomorrow_data, *three_days_data):
+        temp = fc_data['data'].temperature('fahrenheit')
+        high = temp['max']
+        low = temp['min']
         fc_data.update(
             temp_high_f=round_temp(high),
             temp_high_c=round_temp(convert_f2c(high)),
             temp_low_f=round_temp(low),
             temp_low_c=round_temp(convert_f2c(low)),
+            humidity=fc_data['data'].humidity / 100,
         )
 
     parts = [
-        ('High', "{temp_high_f:.0f}F/{temp_high_c:.0f}C"),
-        ('Low', "{temp_low_f:.0f}F/{temp_low_c:.0f}C"),
-        ('Humidity', "{humidity:.0%}"),
-        ('Wind', "{wind_speed_mph:.0f}MPH/{wind_speed_kph:.0f}KPH {wind_direction}"),
+        ("High", "{temp_high_f:.0f}F/{temp_high_c:.0f}C"),
+        ("Low", "{temp_low_f:.0f}F/{temp_low_c:.0f}C"),
+        ("Humidity", "{humidity:.0%}"),
+        (
+            "Wind",
+            "{wind_speed_mph:.0f}MPH/{wind_speed_kph:.0f}KPH {wind_direction}",
+        ),
     ]
 
-    day_str = colors.parse("$(b){name}$(b): {summary}; ") + '; '.join(
-        '{}: {}'.format(part[0], part[1])
-        for part in parts
+    day_str = colors.parse("$(b){name}$(b): {summary}; ") + "; ".join(
+        "{}: {}".format(part[0], part[1]) for part in parts
     )
 
-    url = web.try_shorten(
-        'https://darksky.net/forecast/{lat:.3f},{lng:.3f}'.format_map(
-            location_data
-        )
-    )
-
-    out_format = "{today_str} | {tomorrow_str} -- {place} - $(ul){url}$(clear)"
+    out_format = "{today_str} | {tomorrow_str} -- {place}"
 
     reply(
         colors.parse(out_format).format(
-            today_str=day_str.format_map(today),
-            tomorrow_str=day_str.format_map(tomorrow),
-            place=location_data['address'],
-            url=url
+            today_str=day_str.format_map(today_data),
+            tomorrow_str=day_str.format_map(tomorrow_data),
+            place=location_data["address"],
         )
     )
+    return None

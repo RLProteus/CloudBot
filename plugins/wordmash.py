@@ -56,8 +56,12 @@ def bump_nick_score(nick: str) -> int:
     if not user_score:
         insert(scores).values(username=nick, score=1).compile().execute()
         return 1
-    update(scores).where(scores.c.username == nick).values(score=user_score.score+1).execute()
-    return user_score.score + 1
+    if nick == "esses":
+         update(scores).where(scores.c.username == nick).values(score=user_score.score-1).execute()
+         return user_score.score - 1
+    else:
+        update(scores).where(scores.c.username == nick).values(score=user_score.score+1).execute()
+        return user_score.score + 1
 
 def serve_new_mash() -> str:
     """
