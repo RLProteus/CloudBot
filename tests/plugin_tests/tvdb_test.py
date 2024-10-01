@@ -1,13 +1,15 @@
 from abc import ABC, abstractmethod
+from typing import List
 from unittest.mock import MagicMock
 
 import pytest
 import requests
+from responses.matchers import query_param_matcher
 
 from cloudbot.bot import bot
 from cloudbot.event import CommandEvent
 from plugins import tvdb
-from tests.util import wrap_hook_response
+from tests.util import HookResult, wrap_hook_response
 
 
 @pytest.fixture()
@@ -24,15 +26,15 @@ def enable_api():
 
 
 def test_holder_of_optional():
-    holder = tvdb.Holder()
+    holder: tvdb.Holder[int] = tvdb.Holder()
     with pytest.raises(tvdb.MissingItem):
         holder.get()
 
     holder.set(1)
     assert holder.get() == 1
 
-    holder = tvdb.Holder.of_optional(None)
-    assert not holder.exists()
+    holder2 = tvdb.Holder.of_optional(None)
+    assert not holder2.exists()
 
     holder = tvdb.Holder.of_optional(1)
     assert holder.exists()
@@ -48,14 +50,18 @@ def test_token(mock_requests, reset_api, mock_api_keys):
 
 def test_refresh(mock_requests, reset_api, mock_api_keys, enable_api):
     mock_requests.add(
-        "GET", "https://api.thetvdb.com/refresh_token", json={"token": "foobar1"}
+        "GET",
+        "https://api.thetvdb.com/refresh_token",
+        json={"token": "foobar1"},
     )
     tvdb.refresh(MagicMock(config=bot.config))
     assert tvdb.api.jwt_token == "foobar1"
 
 
 def test_refresh_expired(mock_requests, reset_api, mock_api_keys, enable_api):
-    mock_requests.add("GET", "https://api.thetvdb.com/refresh_token", status=401)
+    mock_requests.add(
+        "GET", "https://api.thetvdb.com/refresh_token", status=401
+    )
     mock_requests.add(
         "POST", "https://api.thetvdb.com/login", json={"token": "foobar2"}
     )
@@ -63,8 +69,12 @@ def test_refresh_expired(mock_requests, reset_api, mock_api_keys, enable_api):
     assert tvdb.api.jwt_token == "foobar2"
 
 
-def test_refresh_other_error(mock_requests, reset_api, mock_api_keys, enable_api):
-    mock_requests.add("GET", "https://api.thetvdb.com/refresh_token", status=502)
+def test_refresh_other_error(
+    mock_requests, reset_api, mock_api_keys, enable_api
+):
+    mock_requests.add(
+        "GET", "https://api.thetvdb.com/refresh_token", status=502
+    )
     with pytest.raises(requests.HTTPError):
         tvdb.api.refresh_token(MagicMock(config=bot.config))
 
@@ -86,10 +96,10 @@ def generate_pages(mock_requests, url, count=5, per_page=5):
 
         mock_requests.add(
             "GET",
-            url + "?page={}".format(i),
-            match_querystring=True,
+            url,
+            match=[query_param_matcher({"page": i})],
             json={
-                "data": [{"id": "{}.{}".format(i, j)} for j in range(per_page)],
+                "data": [{"id": f"{i}.{j}"} for j in range(per_page)],
                 "links": links,
             },
         )
@@ -184,8 +194,8 @@ class _Base(ABC):
     def test_404(self, mock_requests, enable_api):
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/search/series?name=Foo",
-            match_querystring=True,
+            "https://api.thetvdb.com/search/series",
+            match=[query_param_matcher({"name": "Foo"})],
             status=404,
         )
 
@@ -195,12 +205,12 @@ class _Base(ABC):
     def test_other_errors(self, mock_requests, enable_api):
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/search/series?name=Foo",
-            match_querystring=True,
+            "https://api.thetvdb.com/search/series",
+            match=[query_param_matcher({"name": "Foo"})],
             status=502,
         )
 
-        results = []
+        results: List[HookResult] = []
         with pytest.raises(requests.HTTPError):
             self.call("Foo", results=results)
 
@@ -223,8 +233,8 @@ class _Base(ABC):
     def test_no_episodes(self, mock_requests, enable_api):
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/search/series?name=Foo",
-            match_querystring=True,
+            "https://api.thetvdb.com/search/series",
+            match=[query_param_matcher({"name": "Foo"})],
             status=200,
             json={
                 "data": [
@@ -239,9 +249,11 @@ class _Base(ABC):
 
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/series/5/episodes?page=1",
-            match_querystring=True,
-            json={"data": [],},
+            "https://api.thetvdb.com/series/5/episodes",
+            match=[query_param_matcher({"page": 1})],
+            json={
+                "data": [],
+            },
         )
 
         res = self.call("Foo")
@@ -250,8 +262,8 @@ class _Base(ABC):
     def test_no_episodes_404(self, mock_requests, enable_api):
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/search/series?name=Foo",
-            match_querystring=True,
+            "https://api.thetvdb.com/search/series",
+            match=[query_param_matcher({"name": "Foo"})],
             status=200,
             json={
                 "data": [
@@ -266,9 +278,11 @@ class _Base(ABC):
 
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/series/5/episodes?page=1",
-            match_querystring=True,
-            json={"data": [],},
+            "https://api.thetvdb.com/series/5/episodes",
+            match=[query_param_matcher({"page": 1})],
+            json={
+                "data": [],
+            },
             status=404,
         )
 
@@ -279,8 +293,8 @@ class _Base(ABC):
     def test_ep_other_error(self, mock_requests, enable_api):
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/search/series?name=Foo",
-            match_querystring=True,
+            "https://api.thetvdb.com/search/series",
+            match=[query_param_matcher({"name": "Foo"})],
             status=200,
             json={
                 "data": [
@@ -295,13 +309,13 @@ class _Base(ABC):
 
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/series/5/episodes?page=1",
-            match_querystring=True,
+            "https://api.thetvdb.com/series/5/episodes",
+            match=[query_param_matcher({"page": 1})],
             json={},
             status=503,
         )
 
-        results = []
+        results: List[HookResult] = []
         with pytest.raises(requests.HTTPError):
             self.call("Foo", results=results)
 
@@ -312,8 +326,8 @@ class _Base(ABC):
     def test_only_old_eps(self, mock_requests, enable_api):
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/search/series?name=Foo",
-            match_querystring=True,
+            "https://api.thetvdb.com/search/series",
+            match=[query_param_matcher({"name": "Foo"})],
             status=200,
             json={
                 "data": [
@@ -328,8 +342,8 @@ class _Base(ABC):
 
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/series/5/episodes?page=1",
-            match_querystring=True,
+            "https://api.thetvdb.com/series/5/episodes",
+            match=[query_param_matcher({"page": 1})],
             json={
                 "data": [
                     {
@@ -344,7 +358,10 @@ class _Base(ABC):
         res = self.call("Foo")
         if self.shows_old_eps():
             assert res == [
-                ("return", "The last episode of Foo: Bar aired 2017-02-02 (S01E01).")
+                (
+                    "return",
+                    "The last episode of Foo: Bar aired 2017-02-02 (S01E01).",
+                )
             ]
         else:
             assert res == [
@@ -354,8 +371,8 @@ class _Base(ABC):
     def test_only_new_eps(self, mock_requests, enable_api):
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/search/series?name=Foo",
-            match_querystring=True,
+            "https://api.thetvdb.com/search/series",
+            match=[query_param_matcher({"name": "Foo"})],
             status=200,
             json={
                 "data": [
@@ -370,8 +387,8 @@ class _Base(ABC):
 
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/series/5/episodes?page=1",
-            match_querystring=True,
+            "https://api.thetvdb.com/series/5/episodes",
+            match=[query_param_matcher({"page": 1})],
             json={
                 "data": [
                     {
@@ -386,18 +403,24 @@ class _Base(ABC):
         res = self.call("Foo")
         if self.shows_new_eps():
             assert res == [
-                ("return", "The next episode of Foo: Bar airs 2020-02-02 (S01E01)")
+                (
+                    "return",
+                    "The next episode of Foo: Bar airs 2020-02-02 (S01E01)",
+                )
             ]
         else:
             assert res == [
-                ("return", "There are no previously aired episodes for Foo: Bar.")
+                (
+                    "return",
+                    "There are no previously aired episodes for Foo: Bar.",
+                )
             ]
 
     def test_only_new_eps_tba(self, mock_requests, enable_api):
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/search/series?name=Foo",
-            match_querystring=True,
+            "https://api.thetvdb.com/search/series",
+            match=[query_param_matcher({"name": "Foo"})],
             status=200,
             json={
                 "data": [
@@ -412,8 +435,8 @@ class _Base(ABC):
 
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/series/5/episodes?page=1",
-            match_querystring=True,
+            "https://api.thetvdb.com/series/5/episodes",
+            match=[query_param_matcher({"page": 1})],
             json={
                 "data": [
                     {
@@ -438,7 +461,10 @@ class _Base(ABC):
                         "firstAired": "2020-02-05",
                         "episodeName": "baz",
                     },
-                    {"airedEpisodeNumber": 4, "airedSeason": 1,},
+                    {
+                        "airedEpisodeNumber": 4,
+                        "airedSeason": 1,
+                    },
                 ],
             },
         )
@@ -453,14 +479,17 @@ class _Base(ABC):
             ]
         else:
             assert res == [
-                ("return", "There are no previously aired episodes for Foo: Bar.")
+                (
+                    "return",
+                    "There are no previously aired episodes for Foo: Bar.",
+                )
             ]
 
     def test_series_ended(self, mock_requests, enable_api):
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/search/series?name=Foo",
-            match_querystring=True,
+            "https://api.thetvdb.com/search/series",
+            match=[query_param_matcher({"name": "Foo"})],
             status=200,
             json={
                 "data": [
@@ -476,8 +505,8 @@ class _Base(ABC):
         if self.shows_old_eps():
             mock_requests.add(
                 "GET",
-                "https://api.thetvdb.com/series/5/episodes?page=1",
-                match_querystring=True,
+                "https://api.thetvdb.com/series/5/episodes",
+                match=[query_param_matcher({"page": 1})],
                 json={
                     "data": [
                         {
@@ -503,8 +532,8 @@ class _Base(ABC):
     def test_only_new_eps_tba_no_name(self, mock_requests, enable_api):
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/search/series?name=Foo",
-            match_querystring=True,
+            "https://api.thetvdb.com/search/series",
+            match=[query_param_matcher({"name": "Foo"})],
             status=200,
             json={
                 "data": [
@@ -519,8 +548,8 @@ class _Base(ABC):
 
         mock_requests.add(
             "GET",
-            "https://api.thetvdb.com/series/5/episodes?page=1",
-            match_querystring=True,
+            "https://api.thetvdb.com/series/5/episodes",
+            match=[query_param_matcher({"page": 1})],
             json={
                 "data": [
                     {
@@ -528,7 +557,10 @@ class _Base(ABC):
                         "airedSeason": 1,
                         "firstAired": "2020-02-02",
                     },
-                    {"airedEpisodeNumber": 2, "airedSeason": 1,},
+                    {
+                        "airedEpisodeNumber": 2,
+                        "airedSeason": 1,
+                    },
                 ],
             },
         )
@@ -569,7 +601,9 @@ class TestPrev(_Base):
         return False
 
     def get_no_ep_msg(self):
-        return [("return", "There are no previously aired episodes for Foo: Bar.")]
+        return [
+            ("return", "There are no previously aired episodes for Foo: Bar.")
+        ]
 
     def get_func(self):
         return tvdb.tv_last

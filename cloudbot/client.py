@@ -2,21 +2,17 @@ import asyncio
 import collections
 import logging
 import random
-
-import venusian
+from typing import Any, Dict
 
 from cloudbot.permissions import PermissionManager
-from cloudbot.util import async_util
+from cloudbot.util import CLIENT_ATTR, async_util
 
 logger = logging.getLogger("cloudbot")
 
 
 def client(_type):
     def _decorate(cls):
-        def callback_cb(context, name, obj):
-            context.bot.register_client(_type, cls)
-
-        venusian.attach(cls, callback_cb, category='cloudbot.client')
+        setattr(cls, CLIENT_ATTR, _type)
         return cls
 
     return _decorate
@@ -24,7 +20,11 @@ def client(_type):
 
 class ClientConnectError(Exception):
     def __init__(self, client_name, server):
-        super().__init__("Unable to connect to client {} with server {}".format(client_name, server))
+        super().__init__(
+            "Unable to connect to client {} with server {}".format(
+                client_name, server
+            )
+        )
         self.client_name = client_name
         self.server = server
 
@@ -32,25 +32,9 @@ class ClientConnectError(Exception):
 class Client:
     """
     A Client representing each connection the bot makes to a single server
-    :type bot: cloudbot.bot.CloudBot
-    :type loop: asyncio.events.AbstractEventLoop
-    :type name: str
-    :type channels: list[str]
-    :type config: dict[str, unknown]
-    :type nick: str
-    :type vars: dict
-    :type history: dict[str, list[tuple]]
-    :type permissions: PermissionManager
     """
 
     def __init__(self, bot, _type, name, nick, *, channels=None, config=None):
-        """
-        :type bot: cloudbot.bot.CloudBot
-        :type name: str
-        :type nick: str
-        :type channels: list[str]
-        :type config: dict[str, unknown]
-        """
         self.bot = bot
         self.loop = bot.loop
         self.name = name
@@ -75,7 +59,7 @@ class Client:
         self.permissions = PermissionManager(self)
 
         # for plugins to abuse
-        self.memory = collections.defaultdict()
+        self.memory: Dict[str, Any] = collections.defaultdict()
 
         # set when on_load in core_misc is done
         self.ready = False
@@ -99,7 +83,9 @@ class Client:
             try:
                 await self.connect(timeout)
             except Exception:
-                logger.exception("[%s] Error occurred while connecting.", self.name)
+                logger.exception(
+                    "[%s] Error occurred while connecting.", self.name
+                )
             else:
                 break
 
@@ -126,54 +112,42 @@ class Client:
     def message(self, target, *text):
         """
         Sends a message to the given target
-        :type target: str
-        :type text: str
         """
         raise NotImplementedError
 
     def admin_log(self, text, console=True):
         """
         Log a message to the configured admin channel
-        :type text: str
-        :type console: bool
         """
         raise NotImplementedError
 
     def action(self, target, text):
         """
         Sends an action (or /me) to the given target channel
-        :type target: str
-        :type text: str
         """
         raise NotImplementedError
 
     def notice(self, target, text):
         """
         Sends a notice to the given target
-        :type target: str
-        :type text: str
         """
         raise NotImplementedError
 
     def set_nick(self, nick):
         """
         Sets the bot's nickname
-        :type nick: str
         """
         raise NotImplementedError
 
     def join(self, channel, key=None):
         """
         Joins a given channel
-        :type channel: str
-        :type key: str
         """
         raise NotImplementedError
 
     def part(self, channel):
         """
         Parts a given channel
-        :type channel: str
         """
         raise NotImplementedError
 
@@ -200,3 +174,6 @@ class Client:
     @active.setter
     def active(self, value):
         self._active = value
+
+    def reload(self):
+        self.permissions.reload()

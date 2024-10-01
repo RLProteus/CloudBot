@@ -1,15 +1,15 @@
 import asyncio
 import importlib
 import random
+from pathlib import Path
 from typing import Optional
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from cloudbot.event import CommandEvent, Event
 from cloudbot.util.func_utils import call_with_args
-from plugins.attacks import ATTACKS, RespType
-from plugins.foods import BASIC_FOOD
+from plugins import attacks, foods
 
 
 def _call(func, event):
@@ -24,15 +24,17 @@ def _do_test(
     loader,
     data_name,
     cmd,
+    event_loop,
+    mock_bot_factory,
     text: Optional[str] = "test _ data",
     is_nick_valid=None,
     nick=None,
     bot_nick=None,
 ):
     plugin = importlib.import_module("plugins." + plugin_name)
-    bot = MagicMock()
-    bot.data_dir = "data"
-    bot.loop = asyncio.get_event_loop()
+    bot = mock_bot_factory(base_dir=Path().resolve())
+
+    bot.loop = event_loop
     event = Event(
         hook=MagicMock(),
         bot=bot,
@@ -40,13 +42,11 @@ def _do_test(
         channel="#foo",
         nick=nick or "foobar",
     )
+
     if bot_nick:
         event.conn.nick = bot_nick
     else:
         event.conn.nick = "TestBot"
-
-    if is_nick_valid:
-        event.is_nick_valid = is_nick_valid
 
     if loader:
         _call(getattr(plugin, loader), event)
@@ -63,9 +63,12 @@ def _do_test(
         base_event=event,
     )
     if is_nick_valid:
-        cmd_event.is_nick_valid = is_nick_valid
+        with patch.object(cmd_event, "is_nick_valid", new=is_nick_valid):
+            res = _call(cmd_func, cmd_event), cmd_event
+    else:
+        res = _call(cmd_func, cmd_event), cmd_event
 
-    return _call(cmd_func, cmd_event), cmd_event
+    return res
 
 
 @pytest.mark.parametrize(
@@ -84,10 +87,16 @@ def _do_test(
         ("reactions", "load_macros", "reaction_macros", "my_fetish"),
     ],
 )
-def test_message_reply(plugin_name, loader, data_name, cmd):
-    _, event = _do_test(plugin_name, loader, data_name, cmd, None)
+def test_message_reply(
+    plugin_name, loader, data_name, cmd, event_loop, mock_bot_factory
+):
+    _, event = _do_test(
+        plugin_name, loader, data_name, cmd, event_loop, mock_bot_factory, None
+    )
     assert event.conn.message.called
-    _, event = _do_test(plugin_name, loader, data_name, cmd)
+    _, event = _do_test(
+        plugin_name, loader, data_name, cmd, event_loop, mock_bot_factory
+    )
     assert event.conn.message.called
 
 
@@ -98,15 +107,26 @@ def test_message_reply(plugin_name, loader, data_name, cmd):
         ("foods", "load_foods", "basic_food_data", "potato"),
     ],
 )
-def test_action_reply(plugin_name, loader, data_name, cmd):
-    _, event = _do_test(plugin_name, loader, data_name, cmd)
+def test_action_reply(
+    plugin_name, loader, data_name, cmd, event_loop, mock_bot_factory
+):
+    _, event = _do_test(
+        plugin_name, loader, data_name, cmd, event_loop, mock_bot_factory
+    )
     assert event.conn.action.called
 
 
 @pytest.mark.parametrize("seed", list(range(0, 100, 5)))
-def test_drinks(seed):
+def test_drinks(seed, event_loop, mock_bot_factory):
     random.seed(seed)
-    _, event = _do_test("drinks", "load_drinks", "drink_data", "drink_cmd")
+    _, event = _do_test(
+        "drinks",
+        "load_drinks",
+        "drink_data",
+        "drink_cmd",
+        event_loop,
+        mock_bot_factory,
+    )
     assert event.conn.action.called
 
 
@@ -119,40 +139,61 @@ def test_drinks(seed):
         ("gnomeagainsthumanity", "shuffle_deck", "gnomecards", "CAHblackcard"),
     ],
 )
-def test_text_return(plugin_name, loader, data_name, cmd):
-    res, _ = _do_test(plugin_name, loader, data_name, cmd)
+def test_text_return(
+    plugin_name, loader, data_name, cmd, event_loop, mock_bot_factory
+):
+    res, _ = _do_test(
+        plugin_name, loader, data_name, cmd, event_loop, mock_bot_factory
+    )
     assert res
 
 
-@pytest.mark.parametrize("food", [food.name for food in BASIC_FOOD])
-def test_foods(food):
-    _, event = _do_test("foods", "load_foods", "basic_food_data", food)
+@pytest.mark.parametrize("food", [food.name for food in foods.BASIC_FOOD])
+def test_foods(food, event_loop, mock_bot_factory):
+    _, event = _do_test(
+        "foods",
+        "load_foods",
+        "basic_food_data",
+        food,
+        event_loop,
+        mock_bot_factory,
+    )
     assert event.conn.action.called
-    _, event = _do_test("foods", "load_foods", "basic_food_data", food, None)
+    _, event = _do_test(
+        "foods",
+        "load_foods",
+        "basic_food_data",
+        food,
+        event_loop,
+        mock_bot_factory,
+        None,
+    )
     assert event.conn.action.called
     res, event = _do_test(
         "foods",
         "load_foods",
         "basic_food_data",
         food,
+        event_loop,
+        mock_bot_factory,
         is_nick_valid=lambda *args: False,
     )
     assert res
     event.conn.action.assert_not_called()
 
 
-@pytest.mark.parametrize("attack", [attack for attack in ATTACKS])
-def test_attacks(attack):
-    _, event = _do_test("attacks", "load_attacks", "attack_data", attack.name)
+@pytest.mark.parametrize("attack", [attack for attack in attacks.ATTACKS])
+def test_attacks(attack, event_loop, mock_bot_factory):
+    _, event = _do_test(
+        "attacks",
+        "load_attacks",
+        "attack_data",
+        attack.name,
+        event_loop,
+        mock_bot_factory,
+    )
 
-    if attack.response == RespType.ACTION:
-        assert event.conn.action.called
-    else:
-        assert event.conn.message.called
-
-    _, event = _do_test("attacks", "load_attacks", "attack_data", attack.name)
-
-    if attack.response == RespType.ACTION:
+    if attack.response == attacks.RespType.ACTION:
         assert event.conn.action.called
     else:
         assert event.conn.message.called
@@ -162,19 +203,43 @@ def test_attacks(attack):
         "load_attacks",
         "attack_data",
         attack.name,
+        event_loop,
+        mock_bot_factory,
+    )
+
+    if attack.response == attacks.RespType.ACTION:
+        assert event.conn.action.called
+    else:
+        assert event.conn.message.called
+
+    _, event = _do_test(
+        "attacks",
+        "load_attacks",
+        "attack_data",
+        attack.name,
+        event_loop,
+        mock_bot_factory,
         "yourself",
         bot_nick="foobot",
     )
 
-    if attack.response is RespType.ACTION:
+    if attack.response is attacks.RespType.ACTION:
         assert event.conn.action.called
     else:
         assert event.conn.message.called
 
     if not attack.require_target:
-        _, event = _do_test("attacks", "load_attacks", "attack_data", attack.name, None)
+        _, event = _do_test(
+            "attacks",
+            "load_attacks",
+            "attack_data",
+            attack.name,
+            event_loop,
+            mock_bot_factory,
+            None,
+        )
 
-        if attack.response is RespType.ACTION:  # pragma: no cover
+        if attack.response is attacks.RespType.ACTION:  # pragma: no cover
             assert event.conn.action.called
         else:
             assert event.conn.message.called
@@ -184,6 +249,8 @@ def test_attacks(attack):
         "load_attacks",
         "attack_data",
         attack.name,
+        event_loop,
+        mock_bot_factory,
         is_nick_valid=lambda *args: False,
     )
     assert res

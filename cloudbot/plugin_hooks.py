@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import logging
+from typing import Union
 
 from cloudbot.hook import Action, Priority
 
@@ -11,23 +12,10 @@ class Hook:
     """
     Each hook is specific to one function. This class is never used by itself,
     rather extended.
-
-    :type type; str
-    :type plugin: Plugin
-    :type function: callable
-    :type function_name: str
-    :type required_args: list[str]
-    :type threaded: bool
-    :type permissions: list[str]
-    :type single_thread: bool
     """
 
     def __init__(self, _type, plugin, func_hook):
-        """
-        :type _type: str
-        :type plugin: Plugin
-        :type func_hook: hook._Hook
-        """
+        """ """
         self.type = _type
         self.plugin = plugin
         self.function = func_hook.function
@@ -50,7 +38,9 @@ class Hook:
         self.permissions = func_hook.kwargs.pop("permissions", [])
         self.single_thread = func_hook.kwargs.pop("singlethread", False)
         self.action = func_hook.kwargs.pop("action", Action.CONTINUE)
-        self.priority = func_hook.kwargs.pop("priority", Priority.NORMAL)
+        self.priority: Union[int, Priority] = func_hook.kwargs.pop(
+            "priority", Priority.NORMAL
+        )
         self.do_sieve = func_hook.kwargs.pop("do_sieve", True)
 
         lock = func_hook.kwargs.pop("lock", None)
@@ -70,12 +60,14 @@ class Hook:
         if func_hook.kwargs:
             # we should have popped all the args, so warn if there are any left
             logger.warning(
-                "Ignoring extra args %s from %s", func_hook.kwargs, self.description
+                "Ignoring extra args %s from %s",
+                func_hook.kwargs,
+                self.description,
             )
 
     @property
     def description(self):
-        return "{}:{}".format(self.plugin.title, self.function_name)
+        return f"{self.plugin.title}:{self.function_name}"
 
     def __repr__(self):
         parts = [
@@ -85,22 +77,11 @@ class Hook:
             ("single_thread", self.single_thread),
             ("threaded", self.threaded),
         ]
-        return ", ".join("{}: {}".format(k, v) for k, v in parts)
+        return ", ".join(f"{k}: {v}" for k, v in parts)
 
 
 class CommandHook(Hook):
-    """
-    :type name: str
-    :type aliases: list[str]
-    :type doc: str
-    :type auto_help: bool
-    """
-
     def __init__(self, plugin, cmd_hook):
-        """
-        :type plugin: Plugin
-        :type cmd_hook: cloudbot.util.hook._CommandHook
-        """
         auto_help = cmd_hook.kwargs.pop("autohelp", True)
 
         super().__init__("command", plugin, cmd_hook)
@@ -108,13 +89,11 @@ class CommandHook(Hook):
         self.auto_help = auto_help
 
         self.name = cmd_hook.main_alias.lower()
-        self.aliases = [
-            alias.lower() for alias in cmd_hook.aliases
-        ]  # turn the set into a list
+        # turn the set into a list
+        self.aliases = [alias.lower() for alias in cmd_hook.aliases]
         self.aliases.remove(self.name)
-        self.aliases.insert(
-            0, self.name
-        )  # make sure the name, or 'main alias' is in position 0
+        # make sure the name, or 'main alias' is in position 0
+        self.aliases.insert(0, self.name)
         self.doc = cmd_hook.doc
 
     def __repr__(self):
@@ -129,15 +108,7 @@ class CommandHook(Hook):
 
 
 class RegexHook(Hook):
-    """
-    :type regexes: set[re.__Regex]
-    """
-
     def __init__(self, plugin, regex_hook):
-        """
-        :type plugin: Plugin
-        :type regex_hook: cloudbot.util.hook._RegexHook
-        """
         run_on_cmd = regex_hook.kwargs.pop("run_on_cmd", False)
         only_no_match = regex_hook.kwargs.pop("only_no_match", False)
 
@@ -150,26 +121,22 @@ class RegexHook(Hook):
 
     def __repr__(self):
         return "Regex[regexes: [{}], {}]".format(
-            ", ".join(regex.pattern for regex in self.regexes), Hook.__repr__(self)
+            ", ".join(regex.pattern for regex in self.regexes),
+            Hook.__repr__(self),
         )
 
     def __str__(self):
-        return "regex {} from {}".format(self.function_name, self.plugin.file_name)
+        return "regex {} from {}".format(
+            self.function_name, self.plugin.file_name
+        )
 
 
 class PeriodicHook(Hook):
-    """
-    :type interval: int
-    """
-
     def __init__(self, plugin, periodic_hook):
-        """
-        :type plugin: Plugin
-        :type periodic_hook: cloudbot.util.hook._PeriodicHook
-        """
-
         interval = periodic_hook.interval
-        initial_interval = periodic_hook.kwargs.pop("initial_interval", interval)
+        initial_interval = periodic_hook.kwargs.pop(
+            "initial_interval", interval
+        )
 
         super().__init__("periodic", plugin, periodic_hook)
 
@@ -177,7 +144,9 @@ class PeriodicHook(Hook):
         self.initial_interval = initial_interval
 
     def __repr__(self):
-        return "Periodic[interval: [{}], {}]".format(self.interval, Hook.__repr__(self))
+        return "Periodic[interval: [{}], {}]".format(
+            self.interval, Hook.__repr__(self)
+        )
 
     def __str__(self):
         return "periodic hook ({} seconds) {} from {}".format(
@@ -186,15 +155,7 @@ class PeriodicHook(Hook):
 
 
 class RawHook(Hook):
-    """
-    :type triggers: set[str]
-    """
-
     def __init__(self, plugin, irc_raw_hook):
-        """
-        :type plugin: Plugin
-        :type irc_raw_hook: cloudbot.util.hook._RawHook
-        """
         super().__init__("irc_raw", plugin, irc_raw_hook)
 
         self.triggers = irc_raw_hook.triggers
@@ -203,7 +164,9 @@ class RawHook(Hook):
         return "*" in self.triggers
 
     def __repr__(self):
-        return "Raw[triggers: {}, {}]".format(list(self.triggers), Hook.__repr__(self))
+        return "Raw[triggers: {}, {}]".format(
+            list(self.triggers), Hook.__repr__(self)
+        )
 
     def __str__(self):
         return "irc raw {} ({}) from {}".format(
@@ -213,35 +176,28 @@ class RawHook(Hook):
 
 class SieveHook(Hook):
     def __init__(self, plugin, sieve_hook):
-        """
-        :type plugin: Plugin
-        :type sieve_hook: cloudbot.util.hook._SieveHook
-        """
+        """ """
         super().__init__("sieve", plugin, sieve_hook)
 
     def __repr__(self):
-        return "Sieve[{}]".format(Hook.__repr__(self))
+        return f"Sieve[{Hook.__repr__(self)}]"
 
     def __str__(self):
-        return "sieve {} from {}".format(self.function_name, self.plugin.file_name)
+        return "sieve {} from {}".format(
+            self.function_name, self.plugin.file_name
+        )
 
 
 class EventHook(Hook):
-    """
-    :type types: set[cloudbot.event.EventType]
-    """
-
     def __init__(self, plugin, event_hook):
-        """
-        :type plugin: Plugin
-        :type event_hook: cloudbot.util.hook._EventHook
-        """
         super().__init__("event", plugin, event_hook)
 
         self.types = event_hook.types
 
     def __repr__(self):
-        return "Event[types: {}, {}]".format(list(self.types), Hook.__repr__(self))
+        return "Event[types: {}, {}]".format(
+            list(self.types), Hook.__repr__(self)
+        )
 
     def __str__(self):
         return "event {} ({}) from {}".format(
@@ -253,17 +209,16 @@ class EventHook(Hook):
 
 class OnStartHook(Hook):
     def __init__(self, plugin, on_start_hook):
-        """
-        :type plugin: Plugin
-        :type on_start_hook: cloudbot.util.hook._On_startHook
-        """
+        """ """
         super().__init__("on_start", plugin, on_start_hook)
 
     def __repr__(self):
-        return "On_start[{}]".format(Hook.__repr__(self))
+        return f"On_start[{Hook.__repr__(self)}]"
 
     def __str__(self):
-        return "on_start {} from {}".format(self.function_name, self.plugin.file_name)
+        return "on_start {} from {}".format(
+            self.function_name, self.plugin.file_name
+        )
 
 
 class OnStopHook(Hook):
@@ -271,15 +226,17 @@ class OnStopHook(Hook):
         super().__init__("on_stop", plugin, on_stop_hook)
 
     def __repr__(self):
-        return "On_stop[{}]".format(Hook.__repr__(self))
+        return f"On_stop[{Hook.__repr__(self)}]"
 
     def __str__(self):
-        return "on_stop {} from {}".format(self.function_name, self.plugin.file_name)
+        return "on_stop {} from {}".format(
+            self.function_name, self.plugin.file_name
+        )
 
 
 class CapHook(Hook):
     def __init__(self, _type, plugin, base_hook):
-        super().__init__("on_cap_{}".format(_type), plugin, base_hook)
+        super().__init__(f"on_cap_{_type}", plugin, base_hook)
 
         self.caps = base_hook.caps
 
@@ -306,14 +263,11 @@ class OnCapAckHook(CapHook):
 
 class OnConnectHook(Hook):
     def __init__(self, plugin, sieve_hook):
-        """
-        :type plugin: Plugin
-        :type sieve_hook: cloudbot.util.hook._Hook
-        """
+        """ """
         super().__init__("on_connect", plugin, sieve_hook)
 
     def __repr__(self):
-        return "{name}[{base!r}]".format(name=self.type, base=super())
+        return f"{self.type}[{super()!r}]"
 
     def __str__(self):
         return "{name} {func} from {file}".format(
@@ -326,10 +280,12 @@ class IrcOutHook(Hook):
         super().__init__("irc_out", plugin, out_hook)
 
     def __repr__(self):
-        return "Irc_Out[{}]".format(Hook.__repr__(self))
+        return f"Irc_Out[{Hook.__repr__(self)}]"
 
     def __str__(self):
-        return "irc_out {} from {}".format(self.function_name, self.plugin.file_name)
+        return "irc_out {} from {}".format(
+            self.function_name, self.plugin.file_name
+        )
 
 
 class PostHookHook(Hook):
@@ -337,10 +293,23 @@ class PostHookHook(Hook):
         super().__init__("post_hook", plugin, out_hook)
 
     def __repr__(self):
-        return "Post_hook[{}]".format(Hook.__repr__(self))
+        return f"Post_hook[{Hook.__repr__(self)}]"
 
     def __str__(self):
-        return "post_hook {} from {}".format(self.function_name, self.plugin.file_name)
+        return "post_hook {} from {}".format(
+            self.function_name, self.plugin.file_name
+        )
+
+
+class ConfigHook(Hook):
+    def __init__(self, plugin, out_hook):
+        super().__init__("config", plugin, out_hook)
+
+    def __repr__(self):
+        return f"ConfigHook[{Hook.__repr__(self)}]"
+
+    def __str__(self):
+        return f"Config hook {self.function_name} from {self.plugin.file_name}"
 
 
 class PermHook(Hook):
@@ -350,10 +319,12 @@ class PermHook(Hook):
         self.perms = perm_hook.perms
 
     def __repr__(self):
-        return "PermHook[{}]".format(Hook.__repr__(self))
+        return f"PermHook[{Hook.__repr__(self)}]"
 
     def __str__(self):
-        return "perm hook {} from {}".format(self.function_name, self.plugin.file_name)
+        return "perm hook {} from {}".format(
+            self.function_name, self.plugin.file_name
+        )
 
 
 _hook_name_to_plugin = {
@@ -371,6 +342,7 @@ _hook_name_to_plugin = {
     "irc_out": IrcOutHook,
     "post_hook": PostHookHook,
     "perm_check": PermHook,
+    "config": ConfigHook,
 }
 
 hook_name_to_plugin = _hook_name_to_plugin.__getitem__

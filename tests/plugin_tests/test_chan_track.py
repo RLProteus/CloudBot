@@ -1,18 +1,18 @@
-import asyncio
+from typing import Any, Dict
 from unittest.mock import MagicMock
 
 import pytest
 from irclib.parser import Prefix, TagList
 
+from cloudbot.clients.irc import _IrcProtocol
 from cloudbot.util.func_utils import call_with_args
 from plugins.core import chan_track, server_info
-from plugins.core.chan_track import MappingSerializer
 
 
 class MockConn:
-    def __init__(self, bot=None):
+    def __init__(self, bot=None, loop=None):
         self.name = "foo"
-        self.memory = {
+        self.memory: Dict[str, Any] = {
             "server_info": {
                 "statuses": {},
             },
@@ -26,14 +26,14 @@ class MockConn:
         if self.bot:
             self.loop = self.bot.loop
         else:
-            self.loop = asyncio.get_event_loop()
+            self.loop = loop
 
     def get_statuses(self, chars):
         return [self.memory["server_info"]["statuses"][c] for c in chars]
 
 
-def test_replace_user_data():
-    conn = MockConn()
+def test_replace_user_data(event_loop):
+    conn = MockConn(loop=event_loop)
     serv_info = conn.memory["server_info"]
     server_info.handle_prefixes("(YohvV)!@%+-", serv_info)
     users = chan_track.UsersDict(conn)
@@ -63,8 +63,8 @@ def test_replace_user_data():
     assert not chan.users["exampleuser2"].status
 
 
-def test_missing_on_nick():
-    conn = MockConn()
+def test_missing_on_nick(event_loop):
+    conn = MockConn(loop=event_loop)
     chans = chan_track.get_chans(conn)
     chan = chans.getchan("#foo")
 
@@ -72,8 +72,8 @@ def test_missing_on_nick():
         chan.users.pop("exampleuser3")
 
 
-def test_channel_members():
-    conn = MockConn()
+def test_channel_members(event_loop):
+    conn = MockConn(loop=event_loop)
     serv_info = conn.memory["server_info"]
     server_info.handle_prefixes("(YohvV)!@%+-", serv_info)
     server_info.handle_chan_modes(
@@ -141,7 +141,7 @@ NAMES_MOCK_TRAFFIC = [
 ]
 
 
-def test_names_handling():
+def test_names_handling(event_loop):
     handlers = {
         "JOIN": chan_track.on_join,
         "PART": chan_track.on_part,
@@ -152,7 +152,7 @@ def test_names_handling():
     }
 
     bot = MagicMock()
-    bot.loop = asyncio.get_event_loop()
+    bot.loop = event_loop
 
     conn = MockConn(bot)
     serv_info = conn.memory["server_info"]
@@ -162,15 +162,13 @@ def test_names_handling():
     )
 
     for line in NAMES_MOCK_TRAFFIC:
-        from cloudbot.clients.irc import _IrcProtocol
-
         event = _IrcProtocol(conn=conn).parse_line(line)
         call_with_args(handlers[event.irc_command], event)
 
 
-def test_account_tag():
+def test_account_tag(event_loop):
     bot = MagicMock()
-    bot.loop = asyncio.get_event_loop()
+    bot.loop = event_loop
 
     conn = MockConn(bot)
     data = {
@@ -198,16 +196,18 @@ def test_account_tag():
 
 class TestSerializer:
     def test_simple(self):
-        assert MappingSerializer().serialize("a") == '"a"'
-        assert MappingSerializer().serialize(1) == "1"
-        assert MappingSerializer().serialize(None) == "null"
-        assert MappingSerializer().serialize(True) == "true"
+        assert chan_track.MappingSerializer().serialize("a") == '"a"'
+        assert chan_track.MappingSerializer().serialize(1) == "1"
+        assert chan_track.MappingSerializer().serialize(None) == "null"
+        assert chan_track.MappingSerializer().serialize(True) == "true"
 
     def test_dict(self):
         assert (
-            MappingSerializer().serialize({"a": 1, "b": True})
+            chan_track.MappingSerializer().serialize({"a": 1, "b": True})
             == '{"a": 1, "b": true}'
         )
 
     def test_int_list(self):
-        assert MappingSerializer().serialize([1, 2, 3]) == "[1, 2, 3]"
+        assert (
+            chan_track.MappingSerializer().serialize([1, 2, 3]) == "[1, 2, 3]"
+        )

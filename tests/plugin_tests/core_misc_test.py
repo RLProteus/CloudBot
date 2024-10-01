@@ -1,25 +1,25 @@
+from typing import cast
 from unittest.mock import MagicMock, call
 
 import pytest
 from irclib.parser import ParamList
 
 from plugins.core import core_misc
-from tests.util.mock_bot import MockBot
 from tests.util.mock_irc_client import MockIrcClient
 
 
-def test_invite_join():
-    bot = MockBot({})
+def test_invite_join(mock_bot_factory, event_loop):
+    bot = mock_bot_factory(loop=event_loop)
     conn = MockIrcClient(
         bot, "fooconn", "foo", {"connection": {"server": "host.invalid"}}
     )
     core_misc.invite(ParamList("foo", "#bar"), conn)
 
-    assert conn.send.mock_calls == [call("JOIN #bar")]
+    assert cast(MagicMock, conn.send).mock_calls == [call("JOIN #bar")]
 
 
-def test_invite_join_disabled():
-    bot = MockBot({})
+def test_invite_join_disabled(mock_bot_factory, event_loop):
+    bot = mock_bot_factory(loop=event_loop)
     conn = MockIrcClient(
         bot,
         "fooconn",
@@ -28,7 +28,7 @@ def test_invite_join_disabled():
     )
     core_misc.invite(ParamList("foo", "#bar"), conn)
 
-    assert conn.send.mock_calls == []
+    assert cast(MagicMock, conn.send).mock_calls == []
 
 
 @pytest.mark.asyncio()
@@ -75,4 +75,4 @@ async def test_on_connect(config, calls):
 
     assert res is None
 
-    assert conn.send.mock_calls == calls
+    assert cast(MagicMock, conn.send).mock_calls == calls

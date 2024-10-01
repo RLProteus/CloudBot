@@ -1,7 +1,9 @@
 import collections
+import collections.abc
 import inspect
 import re
-from enum import Enum, unique, IntEnum
+import warnings
+from enum import Enum, IntEnum, unique
 
 from cloudbot.event import EventType
 from cloudbot.util import HOOK_ATTR
@@ -22,45 +24,28 @@ class Priority(IntEnum):
 @unique
 class Action(Enum):
     """Defines the action to take after executing a hook"""
-    HALTTYPE = 0  # Once this hook executes, no other hook of that type should run
-    HALTALL = 1  # Once this hook executes, No other hook should run
-    CONTINUE = 2  # Normal execution of all hooks
+
+    # Once this hook executes, no other hook of that type should run
+    HALTTYPE = 0
+    # Once this hook executes, No other hook should run
+    HALTALL = 1
+    # Normal execution of all hooks
+    CONTINUE = 2
 
 
 class _Hook:
-    """
-    :type function: function
-    :type type: str
-    :type kwargs: dict[str, unknown]
-    """
-
     def __init__(self, function, _type):
-        """
-        :type function: function
-        :type _type: str
-        """
         self.function = function
         self.type = _type
         self.kwargs = {}
 
     def _add_hook(self, kwargs):
-        """
-        :type kwargs: dict[str, unknown]
-        """
         # update kwargs, overwriting duplicates
         self.kwargs.update(kwargs)
 
 
 class _CommandHook(_Hook):
-    """
-    :type main_alias: str
-    :type aliases: set[str]
-    """
-
     def __init__(self, function):
-        """
-        :type function: function
-        """
         _Hook.__init__(self, function, "command")
         self.aliases = set()
         self.main_alias = None
@@ -68,14 +53,13 @@ class _CommandHook(_Hook):
         if function.__doc__:
             doc = inspect.cleandoc(function.__doc__)
             # Split on the first entirely blank line
-            self.doc = ' '.join(doc.split('\n\n', 1)[0].strip('\n').split('\n')).strip()
+            self.doc = " ".join(
+                doc.split("\n\n", 1)[0].strip("\n").split("\n")
+            ).strip()
         else:
             self.doc = None
 
     def add_hook(self, alias_param, kwargs):
-        """
-        :type alias_param: list[str] | str
-        """
         self._add_hook(kwargs)
 
         if not alias_param:
@@ -86,27 +70,16 @@ class _CommandHook(_Hook):
             self.main_alias = alias_param[0]
         for alias in alias_param:
             if not valid_command_re.match(alias):
-                raise ValueError("Invalid command name {}".format(alias))
+                raise ValueError(f"Invalid command name {alias}")
         self.aliases.update(alias_param)
 
 
 class _RegexHook(_Hook):
-    """
-    :type regexes: list[re.__Regex]
-    """
-
     def __init__(self, function):
-        """
-        :type function: function
-        """
         _Hook.__init__(self, function, "regex")
         self.regexes = []
 
     def add_hook(self, regex_param, kwargs):
-        """
-        :type regex_param: Iterable[str | re.__Regex] | str | re.__Regex
-        :type kwargs: dict[str, unknown]
-        """
         self._add_hook(kwargs)
         # add all regex_parameters to valid regexes
         if isinstance(regex_param, str):
@@ -129,22 +102,11 @@ class _RegexHook(_Hook):
 
 
 class _RawHook(_Hook):
-    """
-    :type triggers: set[str]
-    """
-
     def __init__(self, function):
-        """
-        :type function: function
-        """
         _Hook.__init__(self, function, "irc_raw")
         self.triggers = set()
 
     def add_hook(self, trigger_param, kwargs):
-        """
-        :type trigger_param: list[str] | str
-        :type kwargs: dict[str, unknown]
-        """
         self._add_hook(kwargs)
 
         if isinstance(trigger_param, str):
@@ -156,17 +118,10 @@ class _RawHook(_Hook):
 
 class _PeriodicHook(_Hook):
     def __init__(self, function):
-        """
-        :type function: function
-        """
         _Hook.__init__(self, function, "periodic")
         self.interval = 60.0
 
     def add_hook(self, interval, kwargs):
-        """
-        :type interval: int
-        :type kwargs: dict[str, unknown]
-        """
         self._add_hook(kwargs)
 
         if interval:
@@ -174,22 +129,11 @@ class _PeriodicHook(_Hook):
 
 
 class _EventHook(_Hook):
-    """
-    :type types: set[cloudbot.event.EventType]
-    """
-
     def __init__(self, function):
-        """
-        :type function: function
-        """
         _Hook.__init__(self, function, "event")
         self.types = set()
 
     def add_hook(self, trigger_param, kwargs):
-        """
-        :type trigger_param: cloudbot.event.EventType | list[cloudbot.event.EventType]
-        :type kwargs: dict[str, unknown]
-        """
         self._add_hook(kwargs)
 
         if isinstance(trigger_param, EventType):
@@ -201,7 +145,7 @@ class _EventHook(_Hook):
 
 class _CapHook(_Hook):
     def __init__(self, func, _type):
-        super().__init__(func, "on_cap_{}".format(_type))
+        super().__init__(func, f"on_cap_{_type}")
         self.caps = set()
 
     def add_hook(self, caps, kwargs):
@@ -236,10 +180,14 @@ def _get_hook(func, hook_type):
     return None
 
 
+def _hook_warn():
+    warnings.warn(
+        "Direct decorators are deprecated", DeprecationWarning, stacklevel=3
+    )
+
+
 def command(*args, **kwargs):
-    """External command decorator. Can be used directly as a decorator, or with args to return a decorator.
-    :type param: str | list[str] | function
-    """
+    """External command decorator. Can be used directly as a decorator, or with args to return a decorator."""
 
     def _command_hook(func, alias_param=None):
         hook = _get_hook(func, "command")
@@ -250,7 +198,9 @@ def command(*args, **kwargs):
         hook.add_hook(alias_param, kwargs)
         return func
 
-    if len(args) == 1 and callable(args[0]):  # this decorator is being used directly
+    if len(args) == 1 and callable(args[0]):
+        # this decorator is being used directly
+        _hook_warn()
         return _command_hook(args[0])
 
     # this decorator is being used indirectly, so return a decorator function
@@ -258,9 +208,7 @@ def command(*args, **kwargs):
 
 
 def irc_raw(triggers_param, **kwargs):
-    """External raw decorator. Must be used as a function to return a decorator
-    :type triggers_param: str | list[str]
-    """
+    """External raw decorator. Must be used as a function to return a decorator"""
 
     def _raw_hook(func):
         hook = _get_hook(func, "irc_raw")
@@ -271,17 +219,18 @@ def irc_raw(triggers_param, **kwargs):
         hook.add_hook(triggers_param, kwargs)
         return func
 
-    if callable(triggers_param):  # this decorator is being used directly, which isn't good
-        raise TypeError("@irc_raw() must be used as a function that returns a decorator")
+    if callable(triggers_param):
+        # this decorator is being used directly, which isn't good
+        raise TypeError(
+            "@irc_raw() must be used as a function that returns a decorator"
+        )
 
     # this decorator is being used as a function, so return a decorator
     return _raw_hook
 
 
 def event(types_param, **kwargs):
-    """External event decorator. Must be used as a function to return a decorator
-    :type types_param: cloudbot.event.EventType | list[cloudbot.event.EventType]
-    """
+    """External event decorator. Must be used as a function to return a decorator"""
 
     def _event_hook(func):
         hook = _get_hook(func, "event")
@@ -292,18 +241,18 @@ def event(types_param, **kwargs):
         hook.add_hook(types_param, kwargs)
         return func
 
-    if callable(types_param):  # this decorator is being used directly, which isn't good
-        raise TypeError("@irc_raw() must be used as a function that returns a decorator")
+    if callable(types_param):
+        # this decorator is being used directly, which isn't good
+        raise TypeError(
+            "@irc_raw() must be used as a function that returns a decorator"
+        )
 
     # this decorator is being used as a function, so return a decorator
     return _event_hook
 
 
 def regex(regex_param, **kwargs):
-    """External regex decorator. Must be used as a function to return a decorator.
-    :type regex_param: str | re.__Regex | list[str | re.__Regex]
-    :type flags: int
-    """
+    """External regex decorator. Must be used as a function to return a decorator."""
 
     def _regex_hook(func):
         hook = _get_hook(func, "regex")
@@ -314,40 +263,42 @@ def regex(regex_param, **kwargs):
         hook.add_hook(regex_param, kwargs)
         return func
 
-    if callable(regex_param):  # this decorator is being used directly, which isn't good
-        raise TypeError("@regex() hook must be used as a function that returns a decorator")
+    if callable(regex_param):
+        # this decorator is being used directly, which isn't good
+        raise TypeError(
+            "@regex() hook must be used as a function that returns a decorator"
+        )
 
     # this decorator is being used as a function, so return a decorator
     return _regex_hook
 
 
 def sieve(param=None, **kwargs):
-    """External sieve decorator. Can be used directly as a decorator, or with args to return a decorator
-    :type param: function | None
-    """
+    """External sieve decorator. Can be used directly as a decorator, or with args to return a decorator"""
 
     def _sieve_hook(func):
-        assert len(inspect.signature(func).parameters) == 3, \
-            "Sieve plugin has incorrect argument count. Needs params: bot, input, plugin"
+        assert (
+            len(inspect.signature(func).parameters) == 3
+        ), "Sieve plugin has incorrect argument count. Needs params: bot, input, plugin"
 
         hook = _get_hook(func, "sieve")
         if hook is None:
-            hook = _Hook(func, "sieve")  # there's no need to have a specific SieveHook object
+            # there's no need to have a specific SieveHook object
+            hook = _Hook(func, "sieve")
             _add_hook(func, hook)
 
         hook._add_hook(kwargs)
         return func
 
     if callable(param):
+        _hook_warn()
         return _sieve_hook(param)
 
     return _sieve_hook
 
 
 def periodic(interval, **kwargs):
-    """External on_start decorator. Can be used directly as a decorator, or with args to return a decorator
-    :type param: function | None
-    """
+    """External on_start decorator. Can be used directly as a decorator, or with args to return a decorator"""
 
     def _periodic_hook(func):
         hook = _get_hook(func, "periodic")
@@ -358,17 +309,31 @@ def periodic(interval, **kwargs):
         hook.add_hook(interval, kwargs)
         return func
 
-    if callable(interval):  # this decorator is being used directly, which isn't good
-        raise TypeError("@periodic() hook must be used as a function that returns a decorator")
+    if callable(interval):
+        # this decorator is being used directly, which isn't good
+        raise TypeError(
+            "@periodic() hook must be used as a function that returns a decorator"
+        )
 
     # this decorator is being used as a function, so return a decorator
     return _periodic_hook
 
 
+def config(**kwargs):
+    def _config_hook(func):
+        hook = _get_hook(func, "config")
+        if hook is None:
+            hook = _Hook(func, "config")
+            _add_hook(func, hook)
+
+        hook._add_hook(kwargs)
+        return func
+
+    return _config_hook
+
+
 def on_start(param=None, **kwargs):
-    """External on_start decorator. Can be used directly as a decorator, or with args to return a decorator
-    :type param: function | None
-    """
+    """External on_start decorator. Can be used directly as a decorator, or with args to return a decorator"""
 
     def _on_start_hook(func):
         hook = _get_hook(func, "on_start")
@@ -380,6 +345,7 @@ def on_start(param=None, **kwargs):
         return func
 
     if callable(param):
+        _hook_warn()
         return _on_start_hook(param)
 
     return _on_start_hook
@@ -390,9 +356,7 @@ onload = on_start
 
 
 def on_stop(param=None, **kwargs):
-    """External on_stop decorator. Can be used directly as a decorator, or with args to return a decorator
-    :type param: function | None
-    """
+    """External on_stop decorator. Can be used directly as a decorator, or with args to return a decorator"""
 
     def _on_stop_hook(func):
         hook = _get_hook(func, "on_stop")
@@ -403,6 +367,7 @@ def on_stop(param=None, **kwargs):
         return func
 
     if callable(param):
+        _hook_warn()
         return _on_stop_hook(param)
 
     return _on_stop_hook
@@ -455,6 +420,7 @@ def on_connect(param=None, **kwargs):
         return func
 
     if callable(param):
+        _hook_warn()
         return _on_connect_hook(param)
 
     return _on_connect_hook
@@ -474,6 +440,7 @@ def irc_out(param=None, **kwargs):
         return func
 
     if callable(param):
+        _hook_warn()
         return _decorate(param)
 
     return _decorate
@@ -494,6 +461,7 @@ def post_hook(param=None, **kwargs):
         return func
 
     if callable(param):
+        _hook_warn()
         return _decorate(param)
 
     return _decorate

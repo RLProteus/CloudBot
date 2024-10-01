@@ -1,5 +1,5 @@
 from threading import RLock
-from typing import List
+from typing import Iterable, List, Tuple
 
 from cloudbot.util.formatting import chunk_str
 from cloudbot.util.sequence import chunk_iter
@@ -23,7 +23,6 @@ class Pager:
     >>> p1.next()
     ['a', 'b', 'c', 'd', 'e']
     >>> p1.next()
-
     """
 
     @classmethod
@@ -48,6 +47,7 @@ class Pager:
         # Added here due to extensive use of threads throughout plugins
         self.lock = RLock()
         self.chunk_size = chunk_size
+        self.chunks: Tuple[str, ...]
         if self.chunk_size == 0:
             self.chunks = (lines,)
         else:
@@ -55,10 +55,10 @@ class Pager:
 
         self.current_pos = 0
 
-    def format_chunk(self, chunk, pagenum):
+    def format_chunk(self, chunk: Iterable[str], pagenum: int) -> List[str]:
         chunk = list(chunk)
         if len(self.chunks) > 1:
-            chunk[-1] += " (page {}/{})".format(pagenum + 1, len(self.chunks))
+            chunk[-1] += f" (page {pagenum + 1}/{len(self.chunks)})"
 
         return chunk
 
@@ -76,7 +76,7 @@ class Pager:
         """Get a specific page"""
         return self[index]
 
-    def __getitem__(self, item):
+    def __getitem__(self, item) -> List[str]:
         """Get a specific page"""
         with self.lock:
             chunk = self.chunks[item]
@@ -125,7 +125,12 @@ class CommandPager(Pager):
 
 
 def paginated_list(
-    data, delim=" \u2022 ", suffix='...', max_len=256, page_size=2, pager_cls=Pager
+    data,
+    delim=" \u2022 ",
+    suffix="...",
+    max_len=256,
+    page_size=2,
+    pager_cls=Pager,
 ):
     """
     >>> list(paginated_list(['abc', 'def']))
@@ -145,7 +150,7 @@ def paginated_list(
         if lines[-1]:
             return delim
 
-        return ''
+        return ""
 
     for item in data:
         if len(item) > max_len:

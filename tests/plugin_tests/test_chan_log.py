@@ -1,14 +1,18 @@
+import sys
 from itertools import chain
 
-from plugins.core.chan_log import format_error_chain
+from plugins.core import chan_log
 
 
 def test_format_exception_chain():
     def _get_data(exc):
         yield repr(exc)
-        yield "  args = {!r}".format(exc.args)
-        yield "  with_traceback = {!r}".format(exc.with_traceback)
-        yield ''
+        if sys.version_info >= (3, 11):
+            yield f"  add_note = {exc.add_note!r}"
+
+        yield f"  args = {exc.args!r}"
+        yield f"  with_traceback = {exc.with_traceback!r}"
+        yield ""
 
     err = ValueError("Test")
     err1 = ValueError("Test 2")
@@ -20,10 +24,12 @@ def test_format_exception_chain():
             except ValueError as e:
                 raise err1 from e
         except ValueError:
-            raise err2
+            raise err2 from None
     except ValueError as e:
-        assert list(format_error_chain(e)) == list(chain(
-            _get_data(err2),
-            _get_data(err1),
-            _get_data(err),
-        ))
+        assert list(chan_log.format_error_chain(e)) == list(
+            chain(
+                _get_data(err2),
+                _get_data(err1),
+                _get_data(err),
+            )
+        )
