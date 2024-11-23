@@ -61,6 +61,11 @@ def set_system_message(nick, chan, text, event):
     SYSTEM = text
     return f"System prompt has been updated to {SYSTEM}"
 
+@hook.command("gpt_drop_context")
+def drop_context():
+    global CONTEXT
+    CONTEXT.clear()
+    return "Context has been dropped !"
 
 @hook.command("gpt", autohelp=False)
 def chat_gpt(nick, chan, text, event):
