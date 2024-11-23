@@ -12,6 +12,7 @@ import string
 
 RATELIMIT = {}
 SYSTEM = ""
+CONTEXT = {}
 
 def check_rate_limit(nick, event):
     permission_manager = event.conn.permissions
@@ -33,6 +34,24 @@ def add_to_rate_limit(nick):
     RATELIMIT[nick] = datetime.now()
     pass
 
+def build_prompt(nick, chan, text):
+    global CONTEXT
+    prompt = ""
+    if CONTEXT.get("timestamp") is not None:
+        time_difference = abs(datetime.now() - CONTEXT.get("timestamp"))
+        if time_difference.seconds > 300:
+            CONTEXT.clear()
+        else:
+            prompt = CONTEXT.get("context")
+            return "\n".join([
+                prompt,
+                f"{nick} on IRC channel {chan} says: {text}"
+            ])
+    return "\n".join([
+        SYSTEM,
+        f"{nick} on IRC channel {chan} says: {text}"
+    ])
+
 @hook.command("gpt_get_system")
 def get_system_message():
     return f"Current system message: {SYSTEM}"
@@ -46,11 +65,9 @@ def set_system_message(nick, chan, text, event):
 
 @hook.command("gpt", autohelp=False)
 def chat_gpt(nick, chan, text, event):
+    global CONTEXT
     rate_limit = check_rate_limit(nick, event)
-    prompt = "\n".join([
-        SYSTEM,
-        f"{nick} on IRC channel {chan} says: {text}"
-    ])
+    prompt = build_prompt(nick, chan, text)
     open_ai_api_key = bot.config.get_api_key("openai")
     resp = requests.post("https://api.openai.com/v1/chat/completions",
                            headers={
@@ -72,6 +89,10 @@ def chat_gpt(nick, chan, text, event):
     add_to_rate_limit(nick)
     if resp.status_code == 200:
         answer = resp.json()["choices"][0]["message"]["content"].replace("\n","")
+        CONTEXT = {
+            "context": "\n".join([prompt, answer]),
+            "timestamp": datetime.now()
+        }
         messages = textwrap.wrap(answer,420)
         if len(messages) > 3:
             hastebin_api_key = bot.config.get_api_key("hastebin")
