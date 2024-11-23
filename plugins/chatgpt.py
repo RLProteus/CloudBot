@@ -36,15 +36,14 @@ def add_to_rate_limit(nick):
 
 def build_prompt(nick, chan, text):
     global CONTEXT
-    prompt = ""
     if CONTEXT.get("timestamp") is not None:
         time_difference = abs(datetime.now() - CONTEXT.get("timestamp"))
         if time_difference.seconds > 300:
             CONTEXT.clear()
         else:
-            prompt = CONTEXT.get("context")
+            ctx = CONTEXT.get("context")
             return "\n".join([
-                prompt,
+                ctx,
                 f"{nick} on IRC channel {chan} says: {text}"
             ])
     return "\n".join([
