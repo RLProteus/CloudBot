@@ -1,24 +1,33 @@
-from cloudbot import hook
-from cloudbot.bot import bot
 from datetime import datetime, timedelta
-import requests
 import textwrap
 import re
 import shutil
 import os
 import random
 import string
+import requests
+
+from cloudbot import hook
+from cloudbot.bot import bot
+
 
 
 RATELIMIT = {}
-SYSTEM = ""
-CONTEXT = {}
+CONTEXT = {
+    "messages": [
+        {
+        "role": "system",
+        "content": "Answer every query with a smiley face at the end.",
+        "name": "system",
+        "timestamp": datetime.now().strftime('%m/%d/%y %H:%M:%S')
+        }
+    ]
+}
 
 def check_rate_limit(nick, event):
     permission_manager = event.conn.permissions
     user = event.mask
     user_permissions = permission_manager.get_user_permissions(user.lower())
-    
 
     if "op" in user_permissions or "botcontrol" in user_permissions:
         return True
@@ -32,46 +41,48 @@ def check_rate_limit(nick, event):
 
 def add_to_rate_limit(nick):
     RATELIMIT[nick] = datetime.now()
-    pass
 
-def build_prompt(nick, chan, text):
-    global CONTEXT
-    if CONTEXT.get("timestamp") is not None:
-        time_difference = abs(datetime.now() - CONTEXT.get("timestamp"))
-        if time_difference.seconds > 300:
-            CONTEXT.clear()
-        else:
-            ctx = CONTEXT.get("context")
-            return "\n".join([
-                ctx,
-                f"{nick} on IRC channel {chan} says: {text}"
-            ])
-    return "\n".join([
-        SYSTEM,
-        f"{nick} on IRC channel {chan} says: {text}"
-    ])
+
+def build_context(nick, text, role):
+    for message in CONTEXT.get("messages"):
+        if message["role"] != "system":
+            message_timestamp = datetime.strptime(message["timestamp"],'%m/%d/%y %H:%M:%S')
+            if abs(datetime.now() - message_timestamp).seconds > 300:
+                CONTEXT.get("messages").remove(message)
+                print("pruning old messages")
+
+    CONTEXT.get("messages").append({
+        "role": role,
+        "content": f"{text}",
+        "name": nick,
+        "timestamp": datetime.now().strftime('%m/%d/%y %H:%M:%S')
+        })
 
 @hook.command("gpt_get_system")
 def get_system_message():
-    return f"Current system message: {SYSTEM}"
+    system = CONTEXT.get("messages")[0].get("content")
+    return f"Current system message: {system}"
 
 @hook.command("gpt_set_system")
 def set_system_message(nick, chan, text, event):
-    global SYSTEM
-    SYSTEM = text
-    return f"System prompt has been updated to {SYSTEM}"
+    CONTEXT.get("messages")[0].update({"content":text})
+    CONTEXT.get("messages")[0].update({"timestamp": datetime.now().strftime('%m/%d/%y %H:%M:%S')})
+    return f"System prompt has been updated to {text}"
 
 @hook.command("gpt_drop_context")
 def drop_context():
-    global CONTEXT
-    CONTEXT.clear()
+    for message in CONTEXT.get("messages"):
+        if message["role"] != "system":
+            CONTEXT.get("messages").remove(message)
     return "Context has been dropped !"
 
+@hook.command("gpt_get_context", permissions=["botcontrol", "op"])
+def get_context():
+    return CONTEXT.get("messages")
+
 @hook.command("gpt", autohelp=False)
-def chat_gpt(nick, chan, text, event):
-    global CONTEXT
-    rate_limit = check_rate_limit(nick, event)
-    prompt = build_prompt(nick, chan, text)
+def chat_gpt(nick, text):
+    build_context(nick, text, role="user")
     open_ai_api_key = bot.config.get_api_key("openai")
     resp = requests.post("https://api.openai.com/v1/chat/completions",
                            headers={
@@ -79,24 +90,18 @@ def chat_gpt(nick, chan, text, event):
                            },
                            json={
                                "model": "gpt-4o",
-                               "messages": [{
-                                   "role": "user",
-                                   "content": prompt,
-                                   "name": nick}],
+                               "messages": CONTEXT.get("messages"),
                                "max_tokens": 1024,
                                "temperature": 1,
                                "n": 1,
                                "stream": False,
                                "user": f"{hash(nick)}",
                            }
-    )
+    , timeout=30)
     add_to_rate_limit(nick)
     if resp.status_code == 200:
         answer = resp.json()["choices"][0]["message"]["content"].replace("\n","")
-        CONTEXT = {
-            "context": "\n".join([prompt, answer]),
-            "timestamp": datetime.now()
-        }
+        build_context(nick, answer, role="assistant")
         messages = textwrap.wrap(answer,420)
         if len(messages) > 3:
             hastebin_api_key = bot.config.get_api_key("hastebin")
@@ -106,24 +111,21 @@ def chat_gpt(nick, chan, text, event):
                                               "Content-Type": "text/plain"
                                           },
                                           data="\n".join(messages)
-            )
+            , timeout=30)
             if hastebin_resp.status_code == 200:
                 truncated_resp = messages[0:3]
-                truncated_resp.append(f"Find the rest of the answer here: https://hastebin.com/share/{hastebin_resp.json()['key']}") 
+                truncated_resp.append(f"Find the rest of the answer here: https://hastebin.com/share/{hastebin_resp.json()['key']}")
                 return truncated_resp
-            else:
-                return "Hastebin failed with error {hastebin_resp.status_code} and message: {hastebin_resp.json()}"
+
+            return "Hastebin failed with error {hastebin_resp.status_code} and message: {hastebin_resp.json()}"
         return messages
-    else:
-         return textwrap.wrap(
-             f"ChatGPT failed with error code {resp.status_code}",
-             250
-         )
-    
+    return textwrap.wrap(
+        f"ChatGPT failed with error code {resp.status_code}",
+        250
+    )
 
 @hook.command("gpt_image", autohelp=False)
 def chat_gpt_image(nick, chan, text, event):
-    rate_limit = check_rate_limit(nick, event)
     open_ai_api_key = bot.config.get_api_key("openai")
     resp = requests.post("https://api.openai.com/v1/images/generations",
                            headers={
@@ -139,22 +141,21 @@ def chat_gpt_image(nick, chan, text, event):
 
 
                            }
-    )
+    , timeout=30)
     add_to_rate_limit(nick)
     if resp.status_code == 200:
         answer = resp.json()["data"][0]["url"]
-        img = requests.get(answer, stream = True)
+        img = requests.get(answer, stream = True, timeout=30)
         with open("temp.png",'wb') as f:
             shutil.copyfileobj(img.raw, f)
         upload_name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
         os.system(f'curl -X POST --data-binary @temp.png     -H "Authorization: Bearer $(gcloud auth print-access-token)"     -H "Content-Type: image/png"     "https://storage.googleapis.com/upload/storage/v1/b/gavibot-ai-images/o?uploadType=media&name={upload_name}.png"')
 
         return f"https://storage.googleapis.com/gavibot-ai-images/{upload_name}.png"
-    else:
-         return textwrap.wrap(
-             f"ChatGPT failed with error code {resp.status_code}",
-             250
-         )
+    return textwrap.wrap(
+        f"ChatGPT failed with error code {resp.status_code}",
+        250
+    )
 
 message = re.compile('^karmachameleon.*',re.IGNORECASE)
 
