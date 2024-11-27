@@ -17,7 +17,7 @@ CONTEXT = {
     "messages": [
         {
         "role": "system",
-        "content": "Answer every query with a smiley face at the end.",
+        "content": "",
         "name": "system",
         "timestamp": datetime.now().strftime('%m/%d/%y %H:%M:%S')
         }
@@ -44,12 +44,10 @@ def add_to_rate_limit(nick):
 
 
 def build_context(nick, text, role):
-    for message in CONTEXT.get("messages"):
-        if message["role"] != "system":
-            message_timestamp = datetime.strptime(message["timestamp"],'%m/%d/%y %H:%M:%S')
-            if abs(datetime.now() - message_timestamp).seconds > 300:
-                CONTEXT.get("messages").remove(message)
-                print("pruning old messages")
+    if CONTEXT.get("idle_timestamp"):
+        idle_timestamp = datetime.strptime(CONTEXT.get("idle_timestamp"),'%m/%d/%y %H:%M:%S')
+        if abs(datetime.now() - idle_timestamp).seconds > 300:
+            drop_context()
 
     CONTEXT.get("messages").append({
         "role": role,
@@ -57,6 +55,8 @@ def build_context(nick, text, role):
         "name": nick,
         "timestamp": datetime.now().strftime('%m/%d/%y %H:%M:%S')
         })
+
+    CONTEXT.update({"idle_timestamp": datetime.now().strftime('%m/%d/%y %H:%M:%S')})
 
 @hook.command("gpt_get_system")
 def get_system_message():
@@ -71,7 +71,8 @@ def set_system_message(nick, chan, text, event):
 
 @hook.command("gpt_drop_context")
 def drop_context():
-    for message in CONTEXT.get("messages"):
+    messages = CONTEXT.get("messages").copy()
+    for message in messages:
         if message["role"] != "system":
             CONTEXT.get("messages").remove(message)
     return "Context has been dropped !"
@@ -101,7 +102,7 @@ def chat_gpt(nick, text):
     add_to_rate_limit(nick)
     if resp.status_code == 200:
         answer = resp.json()["choices"][0]["message"]["content"].replace("\n","")
-        build_context(nick, answer, role="assistant")
+        build_context(nick="Karmachameleon", text=answer, role="assistant")
         messages = textwrap.wrap(answer,420)
         if len(messages) > 3:
             hastebin_api_key = bot.config.get_api_key("hastebin")
