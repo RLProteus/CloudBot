@@ -58,6 +58,12 @@ def build_context(nick, text, role):
 
     CONTEXT.update({"idle_timestamp": datetime.now().strftime('%m/%d/%y %H:%M:%S')})
 
+def drop_context():
+    messages = CONTEXT.get("messages").copy()
+    for message in messages:
+        if message["role"] != "system":
+            CONTEXT.get("messages").remove(message)
+
 @hook.command("gpt_get_system")
 def get_system_message():
     system = CONTEXT.get("messages")[0].get("content")
@@ -70,11 +76,8 @@ def set_system_message(nick, chan, text, event):
     return f"System prompt has been updated to {text}"
 
 @hook.command("gpt_drop_context")
-def drop_context():
-    messages = CONTEXT.get("messages").copy()
-    for message in messages:
-        if message["role"] != "system":
-            CONTEXT.get("messages").remove(message)
+def drop_context_hook():
+    drop_context()
     return "Context has been dropped !"
 
 @hook.command("gpt_get_context", permissions=["botcontrol", "op"])
