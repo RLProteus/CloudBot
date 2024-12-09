@@ -159,7 +159,6 @@ def chat_gpt_image(nick, chan, text, event):
         blob = bucket.blob(upload_name)
         blob.upload_from_filename("temp.png")
 
-        #os.system(f'curl -X POST --data-binary @temp.png     -H "Authorization: Bearer $(gcloud auth print-access-token)"     -H "Content-Type: image/png"     "https://storage.googleapis.com/upload/storage/v1/b/gavibot-ai-images/o?uploadType=media&name={upload_name}.png"')
 
         return f"https://storage.googleapis.com/gavibot-ai-images/{upload_name}"
     return textwrap.wrap(
