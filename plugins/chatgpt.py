@@ -6,6 +6,7 @@ import os
 import random
 import string
 import requests
+from google.cloud import storage
 
 from cloudbot import hook
 from cloudbot.bot import bot
@@ -152,10 +153,15 @@ def chat_gpt_image(nick, chan, text, event):
         img = requests.get(answer, stream = True, timeout=30)
         with open("temp.png",'wb') as f:
             shutil.copyfileobj(img.raw, f)
-        upload_name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
-        os.system(f'curl -X POST --data-binary @temp.png     -H "Authorization: Bearer $(gcloud auth print-access-token)"     -H "Content-Type: image/png"     "https://storage.googleapis.com/upload/storage/v1/b/gavibot-ai-images/o?uploadType=media&name={upload_name}.png"')
+        upload_name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=7)) + '.png'
+        storage_client = storage.Client()
+        bucket = storage_client.bucket("gavibot-ai-images")
+        blob = bucket.blob(upload_name)
+        blob.upload_from_filename("temp.png")
 
-        return f"https://storage.googleapis.com/gavibot-ai-images/{upload_name}.png"
+        #os.system(f'curl -X POST --data-binary @temp.png     -H "Authorization: Bearer $(gcloud auth print-access-token)"     -H "Content-Type: image/png"     "https://storage.googleapis.com/upload/storage/v1/b/gavibot-ai-images/o?uploadType=media&name={upload_name}.png"')
+
+        return f"https://storage.googleapis.com/gavibot-ai-images/{upload_name}"
     return textwrap.wrap(
         f"ChatGPT failed with error code {resp.status_code}",
         250
