@@ -33,6 +33,14 @@ optout = Table(
     PrimaryKeyConstraint('chan','network')
     )
 
+autostart = Table(
+    'duck_hunt_autostart',
+    database.metadata,
+    Column('network', String),
+    Column('chan', String),
+    PrimaryKeyConstraint('chan','network')
+    )
+
 
 
 """
@@ -59,6 +67,18 @@ scripters = defaultdict(int)
 game_status = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
 
 
+@hook.event([EventType.join], singlethread=True)
+def load_autostart(db, chan, message, conn):
+    """load a list of channels duckhunt should be on in by default."""
+    global auto_start
+    auto_start = []
+    chans = db.execute(select([autostart.c.chan]))
+    if chans:
+        for row in chans:
+            chan = row["chan"]
+            auto_start.append(chan)
+            start_hunt(chan, message, conn)
+
 @hook.on_start()
 def load_optout(db):
     """load a list of channels duckhunt should be off in. Right now I am being lazy and not
@@ -83,8 +103,12 @@ def incrementMsgCounter(event, conn):
             game_status[conn.name][event.chan]['masks'].append(event.host)
 
 @hook.command("starthunt", autohelp=False, permissions=["op"])
-def start_hunt(bot, chan, message, conn):
+def start_hunt_cmd(bot, chan, message, conn):
     """This command starts a duckhunt in your channel, to stop the hunt use .stophunt"""
+    start_hunt(chan, message, conn)
+
+
+def start_hunt(chan, message, conn):
     global game_status
     if chan in opt_out:
         return
@@ -503,6 +527,41 @@ def hunt_opt_out(text, chan, db, conn):
         db.execute(delete)
         db.commit()
         load_optout(db)
+
+
+@hook.command("hunt_autostart", permissions=["op"], autohelp=False)
+def hunt_autostart(text, chan, db, conn):
+    """Running this command without any arguments displays the status of the current channel. hunt_autostart add #channel will allow hunts to persist restarts. hunt_autostart remove #channel will disable auto-start for that channel."""
+    if not text:
+        if chan in auto_start:
+            return "Auto start is enabled in {}. To disable it run .hunt_autostart remove #channel".format(chan)
+        else:
+            return "Auto start is disabled in {}. To enable it run .hunt_autostart add #channel".format(chan)
+    if text == "list":
+        return ", ".join(auto_start)
+    if len(text.split(' ')) < 2:
+        return "please specify add or remove and a valid channel name"
+    command = text.split()[0]
+    channel = text.split()[1]
+    if not channel.startswith('#'):
+        return "Please specify a valid channel."
+    if command.lower() == "add":
+        if channel in auto_start:
+            return "Auto start has already been enabled in {}.".format(channel)
+        query = autostart.insert().values(
+            network = conn.name,
+            chan = channel.lower())
+        db.execute(query)
+        db.commit()
+        load_autostart(db)
+        return "The duckhunt will auto start in {}.".format(channel)
+    if command.lower() == "remove":
+        if not channel in auto_start:
+            return "auto start is already enabled in {}.".format(channel)
+        delete = autostart.delete(autostart.c.chan == channel.lower())
+        db.execute(delete)
+        db.commit()
+        load_autostart(db)
 
 @hook.command("duckmerge", permissions=["botcontrol"])
 def duck_merge(text, conn, db, message):
