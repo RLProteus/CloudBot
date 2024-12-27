@@ -22,11 +22,14 @@ from typing import Optional
 import requests
 from requests import RequestException, Response, PreparedRequest, HTTPError
 
+from cloudbot.bot import bot
+
 # Constants
 DEFAULT_SHORTENER = 'is.gd'
 DEFAULT_PASTEBIN = ''
 
 HASTEBIN_SERVER = 'https://hastebin.com'
+HASTEBIN_API_KEY = bot.config.get_api_key("hastebin")
 
 logger = logging.getLogger('cloudbot')
 
@@ -335,7 +338,8 @@ class Hastebin(Pastebin):
             encoded = data
 
         try:
-            r = requests.post(self.url + '/documents', data=encoded)
+            h = {'Authorization': f'Bearer {HASTEBIN_API_KEY}', 'content-type': 'text/plain'}
+            r = requests.post(self.url + '/documents', data=encoded,headers=h)
             r.raise_for_status()
         except HTTPError as e:
             r = e.response
@@ -346,7 +350,7 @@ class Hastebin(Pastebin):
             j = r.json()
 
             if r.status_code is requests.codes.ok:
-                return '{}/{}.{}'.format(self.url, j['key'], ext)
+                return f'{self.url}/share/{j['key']}.{ext}'
 
             raise ServiceHTTPError(j['message'], r)
 
