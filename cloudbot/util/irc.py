@@ -28,7 +28,9 @@ class ChannelMode:
     type = attr.ib(type=ModeType)
 
     def has_param(self, adding: bool) -> bool:
-        return self.type in PARAM_MODE_TYPES or (self.type is ModeType.C and adding)
+        return self.type in PARAM_MODE_TYPES or (
+            self.type is ModeType.C and adding
+        )
 
 
 @attr.s(hash=True)
@@ -43,8 +45,11 @@ class ModeChange:
     info = attr.ib(type=ChannelMode)
 
     @property
-    def is_status(self):
-        return self.info.type is ModeType.Status
+    def is_status(self) -> bool:
+        if not self.info:
+            return False
+
+        return self.info.type == ModeType.Status
 
 
 @attr.s(hash=True)
@@ -58,7 +63,9 @@ class StatusMode(ChannelMode):
 
     @classmethod
     def make(cls, prefix: str, char: str, level: int) -> "StatusMode":
-        return cls(prefix=prefix, level=level, character=char, type=ModeType.Status)
+        return cls(
+            prefix=prefix, level=level, character=char, type=ModeType.Status
+        )
 
 
 def parse_mode_string(
@@ -74,6 +81,9 @@ def parse_mode_string(
             adding = False
         else:
             mode_info = server_modes.get(c)
+            if not mode_info:
+                logger.warning("No ModeInfo found for %s", c)
+
             if mode_info and mode_info.has_param(adding):
                 param = params.pop(0)
             else:
