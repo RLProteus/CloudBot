@@ -1,8 +1,6 @@
 from datetime import datetime, timedelta
 import textwrap
-import re
 import shutil
-import os
 import random
 import string
 import requests
@@ -109,9 +107,9 @@ def chat_gpt(nick, text):
         build_context(nick="Karmachameleon", text=answer, role="assistant")
         messages = textwrap.wrap(answer,420)
         if len(messages) > 3:
-                truncated_resp = messages[0:3]
-                truncated_resp.append(f"Find the rest of the answer here: {web.paste(textwrap.fill(answer,140))}")
-                return truncated_resp
+            truncated_resp = messages[0:3]
+            truncated_resp.append(f"Find the rest of the answer here: {web.paste(textwrap.fill(answer,140))}")
+            return truncated_resp
         return messages
     return textwrap.wrap(
         f"ChatGPT failed with error code {resp.status_code}",
