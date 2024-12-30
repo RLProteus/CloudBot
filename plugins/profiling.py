@@ -4,6 +4,9 @@ import sys
 import threading
 import traceback
 
+from cloudbot import hook
+from cloudbot.util import web
+
 PYMPLER_ENABLED = False
 
 if PYMPLER_ENABLED:
@@ -21,9 +24,6 @@ try:
 except ImportError:
     objgraph = None
 
-from cloudbot import hook
-from cloudbot.util import web
-
 
 def create_tracker():
     if pympler is None:
@@ -37,12 +37,16 @@ tr = create_tracker()
 
 def get_name(thread_id):
     current_thread = threading.current_thread()
-    if thread_id == current_thread._ident:
+    if thread_id == current_thread.ident:
         is_current = True
         thread = current_thread
     else:
         is_current = False
-        thread = threading._active.get(thread_id)
+        thread = None
+        for t in threading.enumerate():
+            if t.ident == thread_id:
+                thread = t
+                break
 
     if thread is not None:
         if thread.name is not None:
@@ -52,7 +56,7 @@ def get_name(thread_id):
     else:
         name = "Unknown thread"
 
-    name = "{} ({})".format(name, thread_id)
+    name = f"{name} ({thread_id})"
     if is_current:
         name += " - Current thread"
 
@@ -61,16 +65,18 @@ def get_name(thread_id):
 
 def get_thread_dump():
     code = []
-    threads = [(get_name(thread_id), traceback.extract_stack(stack))
-               for thread_id, stack in sys._current_frames().items()]
+    threads = [
+        (get_name(thread_id), traceback.extract_stack(stack))
+        for thread_id, stack in sys._current_frames().items()
+    ]
     for thread_name, stack in threads:
-        code.append("# {}".format(thread_name))
+        code.append(f"# {thread_name}")
         for filename, line_num, name, line in stack:
-            code.append("{}:{} - {}".format(filename, line_num, name))
+            code.append(f"{filename}:{line_num} - {name}")
             if line:
-                code.append("    {}".format(line.strip()))
+                code.append(f"    {line.strip()}")
         code.append("")  # new line
-    return web.paste("\n".join(code), ext='txt')
+    return web.paste("\n".join(code), ext="txt")
 
 
 @hook.command("threaddump", autohelp=False, permissions=["botcontrol"])
@@ -121,9 +127,7 @@ def pympler_diff():
 if os.name == "posix":
     # The handler is called with two arguments: the signal number and the current stack frame
     # These parameters should NOT be removed
-    # noinspection PyUnusedLocal
     def debug(sig, frame):
         print(get_thread_dump())
-
 
     signal.signal(signal.SIGUSR1, debug)  # Register handler

@@ -1,6 +1,7 @@
 import math
 from fractions import Fraction
 from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import googlemaps
 import pyowm
@@ -10,6 +11,7 @@ from pyowm.weatherapi25.weather import Weather
 from sqlalchemy import Column, PrimaryKeyConstraint, String, Table
 
 from cloudbot import hook
+from cloudbot.util import colors, database
 from cloudbot.util import colors, database
 
 Api = Optional[googlemaps.Client]
@@ -34,8 +36,25 @@ table = Table(
 )
 
 location_cache: List[Tuple[str, str]] = []
+location_cache: List[Tuple[str, str]] = []
 
 BEARINGS = (
+    "N",
+    "NNE",
+    "NE",
+    "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE",
+    "S",
+    "SSW",
+    "SW",
+    "WSW",
+    "W",
+    "WNW",
+    "NW",
+    "NNW",
     "N",
     "NNE",
     "NE",
@@ -66,7 +85,7 @@ MI_TO_KM = Fraction(1609344, 1000000)
 
 def bearing_to_card(bearing):
     if bearing > MAX_DEGREES or bearing < 0:
-        raise ValueError("Invalid wind bearing: {}".format(bearing))
+        raise ValueError(f"Invalid wind bearing: {bearing}")
 
     # Derived from values from http://snowfence.umn.edu/Components/winddirectionanddegreeswithouttable3.htm
     adj_bearing = bearing + BEARING_RANGE
@@ -94,7 +113,7 @@ def mph_to_kph(mph):
 
 class LocationNotFound(Exception):
     def __init__(self, location):
-        super().__init__("Unable to find location {!r}".format(location))
+        super().__init__(f"Unable to find location {location!r}")
         self.location = location
 
 
@@ -109,6 +128,8 @@ def find_location(location, bias=None):
     json = results[0]
     out = json["geometry"]["location"]
     out["address"] = json["formatted_address"]
+    out = json["geometry"]["location"]
+    out["address"] = json["formatted_address"]
     return out
 
 
@@ -121,7 +142,18 @@ def add_location(nick, location, db):
             .values(loc=location.lower())
             .where(table.c.nick == nick.lower())
         )
+        db.execute(
+            table.update()
+            .values(loc=location.lower())
+            .where(table.c.nick == nick.lower())
+        )
     else:
+        db.execute(
+            table.insert().values(nick=nick.lower(), loc=location.lower())
+        )
+
+    db.commit()
+    load_cache(db)
         db.execute(
             table.insert().values(nick=nick.lower(), loc=location.lower())
         )
@@ -131,12 +163,11 @@ def add_location(nick, location, db):
 
 
 @hook.on_start()
+@hook.on_start()
 def load_cache(db):
     new_cache = []
     for row in db.execute(table.select()):
-        nick = row["nick"]
-        location = row["loc"]
-        new_cache.append((nick, location))
+        new_cache.append((row.nick, row.loc))
 
     location_cache.clear()
     location_cache.extend(new_cache)
@@ -160,12 +191,23 @@ def create_owm_api(bot):
         data.owm_api = None
 
 
+@hook.on_start()
+def create_owm_api(bot):
+    owm_key = bot.config.get_api_key("openweathermap")
+    if owm_key:
+        data.owm_api = OWM(owm_key, pyowm.owm.cfg.get_default_config())
+    else:
+        data.owm_api = None
+
+
 def get_location(nick):
     """looks in location_cache for a saved location"""
     location = [row[1] for row in location_cache if nick.lower() == row[0]]
     if not location:
         return None
+        return None
 
+    return location[0]
     return location[0]
 
 
@@ -174,6 +216,16 @@ def check_and_parse(event, db):
     Check for the API keys and parse the location from user input
     """
     if not data.maps_api:
+        return (
+            None,
+            "This command requires a Google Developers Console API key.",
+        )
+
+    if not data.owm_api:
+        return (
+            None,
+            "This command requires a OpenWeatherMap API key.",
+        )
         return (
             None,
             "This command requires a Google Developers Console API key.",
@@ -199,6 +251,7 @@ def check_and_parse(event, db):
     # to make results more targeted towards that specific country.
     # <https://developers.google.com/maps/documentation/geocoding/#RegionCodes>
     bias = event.bot.config.get("location_bias_cc")
+    bias = event.bot.config.get("location_bias_cc")
     # use find_location to get location data from the user input
     try:
         location_data = find_location(location, bias=bias)
@@ -217,6 +270,7 @@ def check_and_parse(event, db):
     )
 
     return (location_data, conditions), None
+    return (location_data, conditions), None
 
 
 @hook.command("weather", "we", autohelp=False)
@@ -226,6 +280,9 @@ def weather(reply, db, triggered_prefix, event):
     if not res:
         return err
 
+    location_data, owm = res
+    daily_conditions: List[Weather] = owm.forecast_daily
+    current: Weather = owm.current
     location_data, owm = res
     daily_conditions: List[Weather] = owm.forecast_daily
     current: Weather = owm.current
@@ -260,6 +317,14 @@ def weather(reply, db, triggered_prefix, event):
             "Wind",
             "{wind_speed_mph:.0f}MPH/{wind_speed_kph:.0f}KPH {wind_direction}",
         ),
+        ("Current", "{summary}, {temp_f}F/{temp_c}C"),
+        ("High", "{temp_high_f}F/{temp_high_c}C"),
+        ("Low", "{temp_low_f}F/{temp_low_c}C"),
+        ("Humidity", "{humidity:.0%}"),
+        (
+            "Wind",
+            "{wind_speed_mph:.0f}MPH/{wind_speed_kph:.0f}KPH {wind_direction}",
+        ),
     ]
 
     current_str = "; ".join(
@@ -275,9 +340,13 @@ def weather(reply, db, triggered_prefix, event):
         ).format(
             place=location_data["address"],
             current_str=current_str.format_map(current_data),
+            place=location_data["address"],
+            current_str=current_str.format_map(current_data),
             cmd_prefix=triggered_prefix,
         )
     )
+
+    return None
 
     return None
 
@@ -290,7 +359,10 @@ def forecast(reply, db, event):
         return err
 
     location_data, owm = res
+    location_data, owm = res
 
+    one_call = owm
+    daily_conditions = one_call.forecast_daily
     one_call = owm
     daily_conditions = one_call.forecast_daily
     today, tomorrow, *three_days = daily_conditions[:5]
@@ -334,12 +406,20 @@ def forecast(reply, db, event):
             "Wind",
             "{wind_speed_mph:.0f}MPH/{wind_speed_kph:.0f}KPH {wind_direction}",
         ),
+        ("High", "{temp_high_f:.0f}F/{temp_high_c:.0f}C"),
+        ("Low", "{temp_low_f:.0f}F/{temp_low_c:.0f}C"),
+        ("Humidity", "{humidity:.0%}"),
+        (
+            "Wind",
+            "{wind_speed_mph:.0f}MPH/{wind_speed_kph:.0f}KPH {wind_direction}",
+        ),
     ]
 
     day_str = colors.parse("$(b){name}$(b): {summary}; ") + "; ".join(
         "{}: {}".format(part[0], part[1]) for part in parts
     )
 
+    out_format = "{today_str} | {tomorrow_str} -- {place}"
     out_format = "{today_str} | {tomorrow_str} -- {place}"
 
     reply(

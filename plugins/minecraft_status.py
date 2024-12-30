@@ -12,12 +12,20 @@ def mcstatus(reply):
     try:
         request = requests.get("http://status.mojang.com/check")
         request.raise_for_status()
-    except (requests.exceptions.HTTPError, requests.exceptions.ConnectionError) as e:
-        reply("Unable to get Minecraft server status: {}".format(e))
+    except (
+        requests.exceptions.HTTPError,
+        requests.exceptions.ConnectionError,
+    ) as e:
+        reply(f"Unable to get Minecraft server status: {e}")
         raise
 
     # lets just reformat this data to get in a nice format
-    data = json.loads(request.text.replace("}", "").replace("{", "").replace("]", "}").replace("[", "{"))
+    data = json.loads(
+        request.text.replace("}", "")
+        .replace("{", "")
+        .replace("]", "}")
+        .replace("[", "{")
+    )
     out = []
 
     # use a loop so we don't have to update it if they add more servers
@@ -42,7 +50,8 @@ def mcstatus(reply):
         red.sort()
         out.append("\x02Offline\x02: " + ", ".join(red))
 
-    out = " ".join(out)
+    _out = " ".join(out)
 
-    return "\x0f" + out.replace(".mojang.com", ".mj") \
-        .replace(".minecraft.net", ".mc")
+    return "\x0f" + _out.replace(".mojang.com", ".mj").replace(
+        ".minecraft.net", ".mc"
+    )

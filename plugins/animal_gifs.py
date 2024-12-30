@@ -1,6 +1,7 @@
 """
 All GIFs courtesy of http://bestanimations.com/
 """
+
 import random
 from urllib.parse import urljoin
 
@@ -17,8 +18,11 @@ DOG_PAGES = (
 
 def get_gifs(url):
     soup = get_soup(url)
-    container = soup.find('div', class_="row")
-    gifs = [urljoin(url, elem["data-src"]) for elem in container.find_all('img', {'data-src': True})]
+    container = soup.find("div", class_="row")
+    gifs = [
+        urljoin(url, elem["data-src"])
+        for elem in container.find_all("img", {"data-src": True})
+    ]
     return gifs
 
 

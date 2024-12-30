@@ -4,7 +4,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## v1.5.0 (2024-05-08)
+
+### Feat
+
+- **duckhunt**: add duckmerge permission for more granular grants
+
+### Fix
+
+- **reloader**: only handle modification events for config reloader
+
+### Refactor
+
+- remove old noinspection comments from PyCharm
+- move to using attribute constants for hook attributes
+
+## [1.4.0] 2024-04-29
 ### Added
 - Added a stab command to stab other users
 - Add Python 3.8, 3.9 to testing matrix
@@ -12,7 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Officially support channel keys across the whole bot
 - Add missing default config keys
 - Add spam protection in herald.py
+- Add config reload hooks
 ### Changed
+- Replace DarkSky with OpenWeatherMap
 - Updated wine.json (Vault108)
 - Refactor tests to remove dependency on mock library
 - Change link_announcer.py to only warn on connection errors
@@ -22,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Handle 'a' vs 'an' in drinks plugin
 - Apply rate limiting to regex hooks
 ### Fixed
+- Fixed config reloading
 - Fix matching exception in horoscope test
 - Fix youtube.py ISO time parse
 - Fix grammatical error in food sentence (beer)
@@ -32,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update tvdb.py to v3 TVDB API
 - Fix channel parameter handling in IRC client
 - Fix trying to use a local bind address when it isn't set
+- Fix creating the log dir in log.py
 ### Removed
 - twitch.py removed due to outdated API and lack of maintainer
 - metacritic.py removed due to broken scraper and lack of maintainer
@@ -40,6 +59,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed path patching in main module
 - rua.py removed due to website no longer existing that it's based off
 - Python 3.5 support dropped
+- Removed geoip plugin
+- Removed yandex translate plugin
+- Removed soundcloud plugin due to API removal
+- Removed imdb.py, the backing app is not being maintained and is broken
+- Removed quran.py as API no longer exists
+
+## Breaking
+- Removed support for Python <3.8
 
 ## [1.3.0] 2020-03-17
 ### Added
@@ -119,8 +146,9 @@ This update is pretty big. Be warned.
 ## [1.0.0]
 - Initial stable release
 
-[Unreleased]: https://github.com/TotallyNotRobots/CloudBot/compare/v1.3.0...HEAD
-[1.2.0]: https://github.com/TotallyNotRobots/CloudBot/compare/v1.2.0...v1.3.0
+[Unreleased]: https://github.com/TotallyNotRobots/CloudBot/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/TotallyNotRobots/CloudBot/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/TotallyNotRobots/CloudBot/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/TotallyNotRobots/CloudBot/compare/1.1.0...v1.2.0
 [1.1.0]: https://github.com/TotallyNotRobots/CloudBot/compare/1.0.9...1.1.0
 [1.0.9]: https://github.com/TotallyNotRobots/CloudBot/compare/1.0.8...1.0.9

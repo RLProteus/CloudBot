@@ -1,17 +1,11 @@
 import json
 import logging
 import logging.config
-import os
-import sys
+from pathlib import Path
+from typing import Any, Dict, Optional
 
-# check python version
-if sys.version_info < (3, 6):
-    print("CloudBot requires Python 3.6 or newer.")
-    sys.exit(1)
-
-
-version = (1, 3, 0)
-__version__ = ".".join(str(i) for i in version)
+__version__ = "1.5.0"
+version = tuple(__version__.split("."))
 
 __all__ = (
     "clients",
@@ -31,22 +25,27 @@ __all__ = (
 
 
 class LoggingInfo:
-    dir = "logs"
+    dir = Path("logs")
 
-    def make_dir(self):
-        if not os.path.exists(self.dir):
-            os.makedirs(self.dir)
+    def make_dir(self) -> None:
+        self.dir.mkdir(exist_ok=True, parents=True)
 
-    def add_path(self, *paths):
-        return os.path.join(self.dir, *paths)
+    def add_path(self, *paths: str) -> str:
+        p = self.dir
+        for part in paths:
+            p = p / part
+
+        return str(p)
 
 
 logging_info = LoggingInfo()
 
 
-def _setup():
-    if os.path.exists(os.path.abspath("config.json")):
-        with open(os.path.abspath("config.json")) as config_file:
+def _setup(base_path: Optional[Path] = None) -> None:
+    base_path = base_path or Path().resolve()
+    cfg_file = base_path / "config.json"
+    if cfg_file.exists():
+        with open(cfg_file, encoding="utf-8") as config_file:
             json_conf = json.load(config_file)
         logging_config = json_conf.get("logging", {})
     else:
@@ -57,7 +56,7 @@ def _setup():
         "INFO" if logging_config.get("console_log_info", True) else "WARNING"
     )
 
-    logging_info.dir = os.path.join(os.path.abspath(os.path.curdir), "logs")
+    logging_info.dir = base_path / "logs"
 
     logging_info.make_dir()
 
@@ -65,7 +64,7 @@ def _setup():
 
     logger_names = ["cloudbot", "plugins"]
 
-    dict_config = {
+    dict_config: Dict[str, Any] = {
         "version": 1,
         "formatters": {
             "brief": {

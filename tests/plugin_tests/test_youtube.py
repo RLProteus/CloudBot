@@ -1,22 +1,13 @@
 from copy import deepcopy
+from typing import Any, Dict
 from unittest.mock import MagicMock
 
 import pytest
+from responses.matchers import query_param_matcher
 
-from cloudbot.bot import bot
+from plugins import youtube
 
-
-@pytest.fixture()
-def mock_api_keys():
-    try:
-        bot.set(MagicMock())
-        bot.config.get_api_key.return_value = "APIKEY"
-        yield
-    finally:
-        bot.set(None)
-
-
-video_data = {
+video_data: Dict[str, Any] = {
     "kind": "youtube#videoListResponse",
     "etag": '"p4VTdlkQv3HQeTEaXgvLePAydmU/Lj2TyUBAY4pSJv0nR-wZBKBK9YU"',
     "pageInfo": {"totalResults": 1, "resultsPerPage": 1},
@@ -63,27 +54,29 @@ video_data = {
 
 class TestGetVideoDescription:
     base_url = "https://www.googleapis.com/youtube/v3/"
-    "videos?maxResults=1&id=phL7P6gtZRM&parts=statistics%2CcontentDetails%2Csnippet&key=APIKEY"
-    api_url = base_url + (
-        "videos?maxResults=1&id={id}&part=statistics%2CcontentDetails%2Csnippet&key={key}"
-    )
-    search_api_url = base_url + "search?part=id&maxResults=1"
+    api_url = base_url + ("videos")
+
+    def get_params(self, id, key):
+        return {
+            "maxResults": "1",
+            "id": id,
+            "part": "statistics,contentDetails,snippet",
+            "key": key,
+        }
 
     def test_no_key(self, mock_requests, mock_api_keys):
-        from plugins import youtube
-
-        bot.config.get_api_key.return_value = None
+        mock_api_keys.config.get_api_key.return_value = None
 
         with pytest.raises(youtube.NoApiKeyError):
             youtube.get_video_description("foobar")
 
     def test_http_error(self, mock_requests, mock_api_keys):
-        from plugins import youtube
-
         mock_requests.add(
             "GET",
-            self.api_url.format(id="foobar", key="APIKEY"),
-            match_querystring=True,
+            self.api_url,
+            match=[
+                query_param_matcher(self.get_params(id="foobar", key="APIKEY"))
+            ],
             json={
                 "error": {
                     "code": 500,
@@ -97,12 +90,14 @@ class TestGetVideoDescription:
             youtube.get_video_description("foobar")
 
     def test_success(self, mock_requests, mock_api_keys):
-        from plugins import youtube
-
         mock_requests.add(
             "GET",
-            self.api_url.format(id="phL7P6gtZRM", key="APIKEY"),
-            match_querystring=True,
+            self.api_url,
+            match=[
+                query_param_matcher(
+                    self.get_params(id="phL7P6gtZRM", key="APIKEY")
+                )
+            ],
             json=video_data,
         )
 
@@ -115,15 +110,17 @@ class TestGetVideoDescription:
         assert youtube.get_video_description("phL7P6gtZRM") == result
 
     def test_success_no_duration(self, mock_requests, mock_api_keys):
-        from plugins import youtube
-
         data = deepcopy(video_data)
         del data["items"][0]["contentDetails"]["duration"]
 
         mock_requests.add(
             "GET",
-            self.api_url.format(id="phL7P6gtZRM", key="APIKEY"),
-            match_querystring=True,
+            self.api_url,
+            match=[
+                query_param_matcher(
+                    self.get_params(id="phL7P6gtZRM", key="APIKEY")
+                )
+            ],
             json=data,
         )
 
@@ -132,15 +129,17 @@ class TestGetVideoDescription:
         assert youtube.get_video_description("phL7P6gtZRM") == result
 
     def test_success_no_likes(self, mock_requests, mock_api_keys):
-        from plugins import youtube
-
         data = deepcopy(video_data)
         del data["items"][0]["statistics"]["likeCount"]
 
         mock_requests.add(
             "GET",
-            self.api_url.format(id="phL7P6gtZRM", key="APIKEY"),
-            match_querystring=True,
+            self.api_url,
+            match=[
+                query_param_matcher(
+                    self.get_params(id="phL7P6gtZRM", key="APIKEY")
+                )
+            ],
             json=data,
         )
 
@@ -151,9 +150,30 @@ class TestGetVideoDescription:
 
         assert youtube.get_video_description("phL7P6gtZRM") == result
 
-    def test_success_nsfw(self, mock_requests, mock_api_keys):
-        from plugins import youtube
+    def test_success_no_dislikes(self, mock_requests, mock_api_keys):
+        data = deepcopy(video_data)
+        del data["items"][0]["statistics"]["dislikeCount"]
 
+        mock_requests.add(
+            "GET",
+            self.api_url,
+            match=[
+                query_param_matcher(
+                    self.get_params(id="phL7P6gtZRM", key="APIKEY")
+                )
+            ],
+            json=data,
+        )
+
+        result = (
+            "\x02some title\x02 - length \x0217m 2s\x02 - 4,633 likes - "
+            "\x0268,905\x02 views - \x02a channel\x02 on "
+            "\x022019.10.10\x02"
+        )
+
+        assert youtube.get_video_description("phL7P6gtZRM") == result
+
+    def test_success_nsfw(self, mock_requests, mock_api_keys):
         data = deepcopy(video_data)
         data["items"][0]["contentDetails"]["contentRating"] = {
             "ytRating": "ytAgeRestricted"
@@ -161,8 +181,12 @@ class TestGetVideoDescription:
 
         mock_requests.add(
             "GET",
-            self.api_url.format(id="phL7P6gtZRM", key="APIKEY"),
-            match_querystring=True,
+            self.api_url,
+            match=[
+                query_param_matcher(
+                    self.get_params(id="phL7P6gtZRM", key="APIKEY")
+                )
+            ],
             json=data,
         )
 
@@ -176,15 +200,17 @@ class TestGetVideoDescription:
         assert youtube.get_video_description("phL7P6gtZRM") == result
 
     def test_no_results(self, mock_requests, mock_api_keys):
-        from plugins import youtube
-
         data = deepcopy(video_data)
         del data["items"][0]
 
         mock_requests.add(
             "GET",
-            self.api_url.format(id="phL7P6gtZRM", key="APIKEY"),
-            match_querystring=True,
+            self.api_url,
+            match=[
+                query_param_matcher(
+                    self.get_params(id="phL7P6gtZRM", key="APIKEY")
+                )
+            ],
             json=data,
         )
 
@@ -192,8 +218,6 @@ class TestGetVideoDescription:
             youtube.get_video_description("phL7P6gtZRM")
 
     def test_command_error_reply(self, mock_requests, mock_api_keys):
-        from plugins import youtube
-
         mock_requests.add(
             "GET",
             "https://www.googleapis.com/youtube/v3/search",
@@ -205,8 +229,10 @@ class TestGetVideoDescription:
 
         mock_requests.add(
             "GET",
-            self.api_url.format(id="foobar", key="APIKEY"),
-            match_querystring=True,
+            self.api_url,
+            match=[
+                query_param_matcher(self.get_params(id="foobar", key="APIKEY"))
+            ],
             json={
                 "error": {
                     "code": 500,

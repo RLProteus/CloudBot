@@ -8,7 +8,7 @@ import traceback
 from functools import partial
 from itertools import chain
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import Dict, Mapping, Optional, Tuple, Union, cast
 
 from irclib.parser import Message
 
@@ -21,14 +21,12 @@ logger = logging.getLogger("cloudbot")
 irc_nick_re = re.compile(r"[A-Za-z0-9^{}\[\]\-`_|\\]+")
 
 irc_bad_chars = "".join(
-    (
-        c
-        for c in (chr(x) for x in chain(range(0, 32), range(127, 160)))
-        if c not in colors.IRC_FORMATTING_DICT.values() and c != "\1"
-    )
+    c
+    for c in (chr(x) for x in chain(range(0, 32), range(127, 160)))
+    if c not in colors.IRC_FORMATTING_DICT.values() and c != "\1"
 )
 
-irc_clean_re = re.compile("[{}]".format(re.escape(irc_bad_chars)))
+irc_clean_re = re.compile(f"[{re.escape(irc_bad_chars)}]")
 
 
 def irc_clean(dirty: str) -> str:
@@ -102,7 +100,7 @@ def _get_param(msg: Message, index_map: Mapping[str, int]) -> Optional[str]:
     if msg.command in index_map:
         idx = index_map[msg.command]
         if idx < len(msg.parameters):
-            return msg.parameters[idx]
+            return cast(str, msg.parameters[idx])
 
     return None
 
@@ -111,20 +109,10 @@ def _get_param(msg: Message, index_map: Mapping[str, int]) -> Optional[str]:
 class IrcClient(Client):
     """
     An implementation of Client for IRC.
-    :type use_ssl: bool
-    :type server: str
-    :type port: int
-    :type _ignore_cert_errors: bool
     """
 
     def __init__(self, bot, _type, name, nick, *, channels=None, config=None):
-        """
-        :type bot: cloudbot.bot.CloudBot
-        :type name: str
-        :type nick: str
-        :type channels: list[str]
-        :type config: dict[str, unknown]
-        """
+        """ """
         super().__init__(
             bot, _type, name, nick, channels=channels, config=config
         )
@@ -142,10 +130,12 @@ class IrcClient(Client):
             conn_config.get("bind_port"),
         )
 
+        self.local_bind: Union[bool, Tuple[str, str]]
         if not (local_bind[0] or local_bind[1]):
-            local_bind = False
+            self.local_bind = False
+        else:
+            self.local_bind = local_bind
 
-        self.local_bind = local_bind
         # create SSL context
         self.ssl_context = self.make_ssl_context(conn_config)
 
@@ -155,7 +145,7 @@ class IrcClient(Client):
 
         self._connecting = False
 
-        self._channel_keys = {}
+        self._channel_keys: Dict[str, str] = {}
 
     def set_channel_key(
         self, channel: str, key: str, *, override: bool = True
@@ -178,7 +168,7 @@ class IrcClient(Client):
         channel: str,
         default: Optional[str] = None,
         *,
-        set_key: bool = True
+        set_key: bool = True,
     ) -> Optional[str]:
         if channel in self._channel_keys:
             key = self._channel_keys[channel]
@@ -213,9 +203,9 @@ class IrcClient(Client):
 
     def describe_server(self):
         if self.use_ssl:
-            return "+{}:{}".format(self.server, self.port)
+            return f"+{self.server}:{self.port}"
 
-        return "{}:{}".format(self.server, self.port)
+        return f"{self.server}:{self.port}"
 
     async def auto_reconnect(self):
         """
@@ -240,7 +230,7 @@ class IrcClient(Client):
                     self.name,
                     self.describe_server(),
                 )
-            except (socket.error, socket.gaierror, OSError, ssl.SSLError):
+            except (OSError, socket.gaierror, ssl.SSLError):
                 logger.error(
                     "[%s] Error occurred while connecting to %s (%s)",
                     self.name,
@@ -372,11 +362,8 @@ class IrcClient(Client):
     def ctcp(self, target, ctcp_type, text):
         """
         Makes the bot send a PRIVMSG CTCP of type <ctcp_type> to the target
-        :type ctcp_type: str
-        :type text: str
-        :type target: str
         """
-        out = "\x01{} {}\x01".format(ctcp_type, text)
+        out = f"\x01{ctcp_type} {text}\x01"
         self.cmd("PRIVMSG", target, out)
 
     def cmd(self, command, *params):
@@ -384,19 +371,14 @@ class IrcClient(Client):
         Sends a raw IRC command of type <command> with params <params>
         :param command: The IRC command to send
         :param params: The params to the IRC command
-        :type command: str
-        :type params: (str)
         """
-        params = list(
-            map(str, params)
-        )  # turn the tuple of parameters into a list
-        self.send(str(Message(None, None, command, params)))
+        # turn the tuple of parameters into a list
+        param_list = list(map(str, params))
+        self.send(str(Message(None, None, command, param_list)))
 
     def send(self, line, log=True):
         """
         Sends a raw IRC line
-        :type line: str
-        :type log: bool
         """
         if not self.connected:
             raise ValueError(
@@ -408,8 +390,6 @@ class IrcClient(Client):
     def _send(self, line, log=True):
         """
         Sends a raw IRC line unchecked. Doesn't do connected check, and is *not* threadsafe
-        :type line: str
-        :type log: bool
         """
         async_util.wrap_future(
             self._protocol.send(line, log=log), loop=self.loop
@@ -424,20 +404,10 @@ class IrcClient(Client):
 
 
 class _IrcProtocol(asyncio.Protocol):
-    """
-    :type loop: asyncio.events.AbstractEventLoop
-    :type conn: IrcClient
-    :type bot: cloudbot.bot.CloudBot
-    :type _input_buffer: bytes
-    :type _connected: bool
-    :type _transport: asyncio.transports.Transport
-    :type _connected_future: asyncio.Future
-    """
+    """ """
 
     def __init__(self, conn):
-        """
-        :type conn: IrcClient
-        """
+        """ """
         self.loop = conn.loop
         self.bot = conn.bot
         self.conn = conn

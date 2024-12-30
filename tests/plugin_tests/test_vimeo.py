@@ -3,10 +3,12 @@ from unittest.mock import patch
 
 import pytest
 
+from plugins import vimeo
+
 
 @pytest.fixture()
 def patch_get_json():
-    with patch('cloudbot.util.http.get_json') as patched:
+    with patch("cloudbot.util.http.get_json") as patched:
         yield patched
 
 
@@ -26,14 +28,12 @@ DATA = [
         "width": 320,
         "height": 240,
         "tags": "foo, bar",
-        "embed_privacy": "anywhere"
+        "embed_privacy": "anywhere",
     }
 ]
 
 
 def test_no_data(patch_get_json):
-    from plugins import vimeo
-
     patch_get_json.return_value = []
 
     result = vimeo.vimeo_url(vimeo.url_re.search("https://vimeo.com/1125483"))
@@ -42,28 +42,24 @@ def test_no_data(patch_get_json):
 
 
 def test_no_likes(patch_get_json):
-    from plugins import vimeo
-
     patch_get_json.return_value = deepcopy(DATA)
 
     result = vimeo.vimeo_url(vimeo.url_re.search("https://vimeo.com/11235"))
 
     expected_parts = [
-        '\x02A video title\x02',
-        'length \x0244 seconds\x02',
-        '\x020\x02 likes',
-        '\x02106\x02 plays',
-        '\x02AUser\x02 on \x022006-10-24 22:56:45\x02',
+        "\x02A video title\x02",
+        "length \x0244 seconds\x02",
+        "\x020\x02 likes",
+        "\x02106\x02 plays",
+        "\x02AUser\x02 on \x022006-10-24 22:56:45\x02",
     ]
 
-    expected = ' - '.join(expected_parts)
+    expected = " - ".join(expected_parts)
 
     assert result == expected
 
 
 def test_with_likes(patch_get_json):
-    from plugins import vimeo
-
     data = deepcopy(DATA)
 
     data[0]["stats_number_of_likes"] = 54
@@ -73,13 +69,13 @@ def test_with_likes(patch_get_json):
     result = vimeo.vimeo_url(vimeo.url_re.search("https://vimeo.com/11235"))
 
     expected_parts = [
-        '\x02A video title\x02',
-        'length \x0244 seconds\x02',
-        '\x0254\x02 likes',
-        '\x02106\x02 plays',
-        '\x02AUser\x02 on \x022006-10-24 22:56:45\x02',
+        "\x02A video title\x02",
+        "length \x0244 seconds\x02",
+        "\x0254\x02 likes",
+        "\x02106\x02 plays",
+        "\x02AUser\x02 on \x022006-10-24 22:56:45\x02",
     ]
 
-    expected = ' - '.join(expected_parts)
+    expected = " - ".join(expected_parts)
 
     assert result == expected

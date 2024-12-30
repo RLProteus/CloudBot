@@ -8,33 +8,35 @@ from cloudbot.util import colors, database
 from cloudbot.util.http import parse_soup
 
 table = Table(
-    'horoscope',
+    "horoscope",
     database.metadata,
-    Column('nick', String, primary_key=True),
-    Column('sign', String)
+    Column("nick", String, primary_key=True),
+    Column("sign", String),
 )
 
 BASE_URL = URL("http://www.horoscope.com/us/horoscopes/general/")
 DAILY_URL = BASE_URL / "horoscope-general-daily-today.aspx"
 
 SIGN_MAP = {
-    'aries': '1',
-    'taurus': '2',
-    'gemini': '3',
-    'cancer': '4',
-    'leo': '5',
-    'virgo': '6',
-    'libra': '7',
-    'scorpio': '8',
-    'sagittarius': '9',
-    'capricorn': '10',
-    'aquarius': '11',
-    'pisces': '12',
+    "aries": "1",
+    "taurus": "2",
+    "gemini": "3",
+    "cancer": "4",
+    "leo": "5",
+    "virgo": "6",
+    "libra": "7",
+    "scorpio": "8",
+    "sagittarius": "9",
+    "capricorn": "10",
+    "aquarius": "11",
+    "pisces": "12",
 }
 
 
 def get_sign(db, nick):
-    row = db.execute(select([table.c.sign]).where(table.c.nick == nick.lower())).fetchone()
+    row = db.execute(
+        select(table.c.sign).where(table.c.nick == nick.lower())
+    ).fetchone()
     if not row:
         return None
 
@@ -42,7 +44,11 @@ def get_sign(db, nick):
 
 
 def set_sign(db, nick, sign):
-    res = db.execute(table.update().values(sign=sign.lower()).where(table.c.nick == nick.lower()))
+    res = db.execute(
+        table.update()
+        .values(sign=sign.lower())
+        .where(table.c.nick == nick.lower())
+    )
     if res.rowcount == 0:
         db.execute(table.insert().values(nick=nick.lower(), sign=sign.lower()))
 
@@ -81,7 +87,7 @@ def parse_or_lookup(text, db, nick, event):
         sign = sign.strip().lower()
 
     if sign not in SIGN_MAP:
-        event.notice("Unknown sign: {}".format(sign))
+        event.notice(f"Unknown sign: {sign}")
         return None, None
 
     return sign, dontsave
@@ -106,7 +112,6 @@ def parse_page(content):
     plugins.horoscope.HoroscopeParseError: Unable to parse horoscope
     >>> parse_page('<div class="main-horoscope"><p>hello world</p></div>')
     'hello world'
-
     """
     soup = parse_soup(content)
     container = soup.find("div", class_="main-horoscope")
@@ -124,24 +129,25 @@ def parse_page(content):
 def horoscope(text, db, bot, nick, event):
     """[sign] - get your horoscope"""
 
-    headers = {'User-Agent': bot.user_agent}
+    headers = {"User-Agent": bot.user_agent}
 
     sign, dontsave = parse_or_lookup(text, db, nick, event)
 
     if not sign:
         return
 
-    params = {
-        "sign": SIGN_MAP[sign]
-    }
+    params = {"sign": SIGN_MAP[sign]}
 
     try:
-        request = requests.get(
+        with requests.get(
             str(DAILY_URL), params=params, headers=headers
-        )
-        request.raise_for_status()
-    except (requests.exceptions.HTTPError, requests.exceptions.ConnectionError) as e:
-        event.reply("Could not get horoscope: {}. URL Error".format(e))
+        ) as request:
+            request.raise_for_status()
+    except (
+        requests.exceptions.HTTPError,
+        requests.exceptions.ConnectionError,
+    ) as e:
+        event.reply(f"Could not get horoscope: {e}. URL Error")
         raise
 
     try:

@@ -3,6 +3,7 @@ from typing import Iterable, Mapping, Match, Optional, Union
 
 import isodate
 import requests
+from requests import Response
 
 from cloudbot import hook
 from cloudbot.bot import bot
@@ -10,10 +11,12 @@ from cloudbot.util import colors, timeformat
 from cloudbot.util.formatting import pluralize_suffix
 
 youtube_re = re.compile(
-    r"(?:youtube.*?(?:v=|/v/)|youtu\.be/|yooouuutuuube.*?id=)([-_a-zA-Z0-9]+)", re.I
+    r"(?:youtube.*?(?:v=|/v/)|youtu\.be/|yooouuutuuube.*?id=)([-_a-zA-Z0-9]+)",
+    re.I,
 )
 ytpl_re = re.compile(
-    r"(.*:)//(www.youtube.com/playlist|youtube.com/playlist)(:[0-9]+)?(.*)", re.I
+    r"(.*:)//(www.youtube.com/playlist|youtube.com/playlist)(:[0-9]+)?(.*)",
+    re.I,
 )
 
 
@@ -21,7 +24,9 @@ base_url = "https://www.googleapis.com/youtube/v3/"
 
 
 class APIError(Exception):
-    def __init__(self, message: str, response: Optional[str] = None) -> None:
+    def __init__(
+        self, message: str, response: Optional[Union[str, Response]] = None
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.response = response
@@ -33,8 +38,8 @@ class NoApiKeyError(APIError):
 
 
 class NoResultsError(APIError):
-    def __init__(self) -> None:
-        super().__init__("No results")
+    def __init__(self, response: Response) -> None:
+        super().__init__("No results", response)
 
 
 def raise_api_errors(response: requests.Response) -> None:
@@ -44,7 +49,7 @@ def raise_api_errors(response: requests.Response) -> None:
         try:
             data = response.json()
         except ValueError:
-            raise e
+            raise e from None
 
         errors = data.get("errors")
         if not errors:
@@ -56,7 +61,7 @@ def raise_api_errors(response: requests.Response) -> None:
         first_error = errors[0]
         domain = first_error["domain"]
         reason = first_error["reason"]
-        raise APIError("API Error ({}/{})".format(domain, reason), data) from e
+        raise APIError(f"API Error ({domain}/{reason})", data) from e
 
 
 def make_short_url(video_id: str) -> str:
@@ -69,7 +74,10 @@ Parts = Iterable[str]
 
 
 def do_request(
-    method: str, parts: Parts, params: Optional[ParamMap] = None, **kwargs: ParamValues
+    method: str,
+    parts: Parts,
+    params: Optional[ParamMap] = None,
+    **kwargs: ParamValues,
 ) -> requests.Response:
     api_key = bot.config.get_api_key("google_dev_key")
     if not api_key:
@@ -88,12 +96,16 @@ def get_video(video_id: str, parts: Parts) -> requests.Response:
 
 
 def get_playlist(playlist_id: str, parts: Parts) -> requests.Response:
-    return do_request("playlists", parts, params={"maxResults": 1, "id": playlist_id})
+    return do_request(
+        "playlists", parts, params={"maxResults": 1, "id": playlist_id}
+    )
 
 
 def do_search(term: str, result_type: str = "video") -> requests.Response:
     return do_request(
-        "search", ["snippet"], params={"maxResults": 1, "q": term, "type": result_type}
+        "search",
+        ["snippet"],
+        params={"maxResults": 1, "q": term, "type": result_type},
     )
 
 
@@ -106,7 +118,7 @@ def get_video_description(video_id: str) -> str:
 
     data = json["items"]
     if not data:
-        raise NoResultsError()
+        raise NoResultsError(request)
 
     item = data[0]
     snippet = item["snippet"]
@@ -122,18 +134,21 @@ def get_video_description(video_id: str) -> str:
     out += " - length\x02 {}\x02".format(
         timeformat.format_time(int(length.total_seconds()), simple=True)
     )
-    try:
-        total_votes = float(statistics["likeCount"]) + float(statistics["dislikeCount"])
-    except (LookupError, ValueError):
-        total_votes = 0
 
-    if total_votes != 0:
+    like_data = statistics.get("likeCount")
+    dislike_data = statistics.get("dislikeCount")
+
+    if like_data:
         # format
-        likes = pluralize_suffix(int(statistics["likeCount"]), "like")
-        dislikes = pluralize_suffix(int(statistics["dislikeCount"]), "dislike")
-
-        percent = 100 * float(statistics["likeCount"]) / total_votes
-        out += " - {}, {} (\x02 {:.1f}\x02%)".format(likes, dislikes, percent)
+        likes = int(like_data)
+        out += " - {}".format(pluralize_suffix(likes, "like"))
+        if dislike_data:
+            dislikes = int(dislike_data)
+            total_votes = likes + dislikes
+            percent = 100 * likes / total_votes
+            out += ", {} (\x02{:.1f}\x02%)".format(
+                pluralize_suffix(dislikes, "dislike"), percent
+            )
 
     if "viewCount" in statistics:
         views = int(statistics["viewCount"])
@@ -167,23 +182,31 @@ def get_video_id(text: str) -> str:
     json = request.json()
 
     if not json.get("items"):
-        raise NoResultsError()
+        raise NoResultsError(request)
 
-    video_id = json["items"][0]["id"]["videoId"]  # type: str
+    video_id: str = json["items"][0]["id"]["videoId"]
     return video_id
 
 
 @hook.regex(youtube_re)
-def youtube_url(match: Match[str]) -> str:
-    return get_video_description(match.group(1))
+def youtube_url(match: Match[str]) -> Optional[str]:
+    try:
+        return get_video_description(match.group(1))
+    except NoResultsError:
+        return None
 
 
 @hook.command("youtube", "you", "yt", "y")
 def youtube(text: str, reply) -> str:
-    """<query> - Returns the first YouTube search result for <query>."""
+    """<query> - Returns the first YouTube search result for <query>.
+
+    :param text: User input
+    """
     try:
         video_id = get_video_id(text)
-        return get_video_description(video_id) + " - " + make_short_url(video_id)
+        return (
+            get_video_description(video_id) + " - " + make_short_url(video_id)
+        )
     except NoResultsError as e:
         return e.message
     except APIError as e:
@@ -234,7 +257,7 @@ def youtime(text: str, reply) -> str:
 
 
 @hook.regex(ytpl_re)
-def ytplaylist_url(match: Match[str]) -> str:
+def ytplaylist_url(match: Match[str]) -> Optional[str]:
     location = match.group(4).split("=")[-1]
     request = get_playlist(location, ["contentDetails", "snippet"])
     raise_api_errors(request)
@@ -243,7 +266,7 @@ def ytplaylist_url(match: Match[str]) -> str:
 
     data = json["items"]
     if not data:
-        raise NoResultsError()
+        return None
 
     item = data[0]
     snippet = item["snippet"]
@@ -252,5 +275,7 @@ def ytplaylist_url(match: Match[str]) -> str:
     title = snippet["title"]
     author = snippet["channelTitle"]
     num_videos = int(content_details["itemCount"])
-    count_videos = " - \x02{:,}\x02 video{}".format(num_videos, "s"[num_videos == 1 :])
-    return "\x02{}\x02 {} - \x02{}\x02".format(title, count_videos, author)
+    count_videos = " - \x02{:,}\x02 video{}".format(
+        num_videos, "s"[num_videos == 1 :]
+    )
+    return f"\x02{title}\x02 {count_videos} - \x02{author}\x02"

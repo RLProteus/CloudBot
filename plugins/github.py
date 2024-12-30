@@ -1,12 +1,15 @@
 import re
 
 import requests
+from requests import HTTPError
 
 from cloudbot import hook
 from cloudbot.util import formatting, web
 
 shortcuts = {}
-url_re = re.compile(r"(?:https?://github\.com/)?(?P<owner>[^/]+)/(?P<repo>[^/]+)")
+url_re = re.compile(
+    r"(?:https?://github\.com/)?(?P<owner>[^/]+)/(?P<repo>[^/]+)"
+)
 
 
 def parse_url(url):
@@ -28,17 +31,35 @@ def load_shortcuts(bot):
 
 
 @hook.command("ghissue", "issue")
-def issue_cmd(text):
+def issue_cmd(text, event):
     """<username|repo> [number] - gets issue [number]'s summary, or the open issue count if no issue is specified"""
     args = text.split()
-    owner, repo = parse_url(args[0] if args[0] not in shortcuts else shortcuts[args[0]])
+    first = args[0]
+    shortcut = shortcuts.get(first)
+    if shortcut:
+        data = shortcut
+    else:
+        data = parse_url(first)
+
+    owner, repo = data
     issue = args[1] if len(args) > 1 else None
 
     if issue:
         r = requests.get(
-            "https://api.github.com/repos/{}/{}/issues/{}".format(owner, repo, issue)
+            "https://api.github.com/repos/{}/{}/issues/{}".format(
+                owner, repo, issue
+            )
         )
-        r.raise_for_status()
+
+        try:
+            r.raise_for_status()
+        except HTTPError as err:
+            if err.response.status_code == 404:
+                return f"Issue #{issue} doesn't exist in {owner}/{repo}"
+
+            event.reply(str(err))
+            raise
+
         j = r.json()
 
         url = web.try_shorten(j["html_url"], service="git.io")
@@ -48,10 +69,16 @@ def issue_cmd(text):
         if j["state"] == "open":
             state = "\x033\x02Opened\x02\x0f by {}".format(j["user"]["login"])
         else:
-            state = "\x034\x02Closed\x02\x0f by {}".format(j["closed_by"]["login"])
+            state = "\x034\x02Closed\x02\x0f by {}".format(
+                j["closed_by"]["login"]
+            )
 
-        return "Issue #{} ({}): {} | {}: {}".format(number, state, url, title, summary)
-    r = requests.get("https://api.github.com/repos/{}/{}/issues".format(owner, repo))
+        return "Issue #{} ({}): {} | {}: {}".format(
+            number, state, url, title, summary
+        )
+
+    r = requests.get(f"https://api.github.com/repos/{owner}/{repo}/issues")
+
     r.raise_for_status()
     j = r.json()
 
@@ -59,4 +86,4 @@ def issue_cmd(text):
     if count == 0:
         return "Repository has no open issues."
 
-    return "Repository has {} open issues.".format(count)
+    return f"Repository has {count} open issues."

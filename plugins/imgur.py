@@ -1,6 +1,7 @@
 import random
 import re
 from contextlib import suppress
+from typing import Match, Optional
 
 from imgurpython import ImgurClient
 
@@ -17,7 +18,7 @@ NO_NSFW = False
 
 
 class APIContainer:
-    api = None
+    api: Optional[ImgurClient] = None
 
 
 container = APIContainer()
@@ -34,12 +35,13 @@ def make_api():
     return ImgurClient(client_id, client_secret)
 
 
-@hook.on_start
+@hook.on_start()
 def set_api():
     container.api = make_api()
 
 
 def get_items(text):
+    reddit_search: Optional[Match[str]]
     if text:
         reddit_search = re.search(r"/r/([^\s/]+)", text)
         user_search = re.search(r"/user/([^\s/]+)", text)
@@ -59,19 +61,20 @@ def get_items(text):
             page = random.randint(1, 5)
             items = container.api.gallery_search(text, page=page)
     else:
-        reddit_search = False
+        reddit_search = None
         items = container.api.gallery()
 
     if NO_NSFW:
         items = [item for item in items if not item.nsfw]
 
-    return items, reddit_search
+    return items, bool(reddit_search)
 
 
 @hook.command(autohelp=False)
 def imgur(text):
     """[search term] / [/r/subreddit] / [/user/username] / memes / random - returns a link to a random imgur image based
-     on your input. if no input is given the bot will get an image from the imgur frontpage """
+    on your input. if no input is given the bot will get an image from the imgur frontpage
+    """
     text = text.strip().lower()
 
     if not container.api:
@@ -102,7 +105,9 @@ def imgur(text):
     # if it's an imgur meme, add the meme name
     # if not, AttributeError will trigger and code will carry on
     with suppress(AttributeError):
-        title = "\x02{}\x02 - {}".format(item.meme_metadata["meme_name"].lower(), title)
+        title = "\x02{}\x02 - {}".format(
+            item.meme_metadata["meme_name"].lower(), title
+        )
 
     # if the item has a tag, show that
     if item.section:
@@ -115,19 +120,20 @@ def imgur(text):
     # if the search was a subreddit search, add the reddit comment link
     if is_reddit:
         reddit_url = web.try_shorten("http://reddit.com" + item.reddit_comments)
-        url = "{} ({})".format(item.link, reddit_url)
+        url = f"{item.link} ({reddit_url})"
     else:
-        url = "{}".format(item.link)
+        url = f"{item.link}"
 
     tag_str = "[\x02" + ("\x02, \x02".join(tags)) + "\x02] " if tags else ""
 
-    return '{}"{}" - {}'.format(tag_str, title, url)
+    return f'{tag_str}"{title}" - {url}'
 
 
 @hook.command("imguralbum", "multiimgur", "imgalbum", "album", autohelp=False)
 def imguralbum(text, conn):
     """[search term] / [/r/subreddit] / [/user/username] / memes / random - returns a link to lots of random images
-    based on your input. if no input is given the bot will get images from the imgur frontpage """
+    based on your input. if no input is given the bot will get images from the imgur frontpage
+    """
     text = text.strip().lower()
 
     if not container.api:
@@ -144,13 +150,13 @@ def imguralbum(text, conn):
     random.shuffle(items)
     items = items[:50]
 
-    nsfw = any([item.nsfw for item in items])
+    nsfw = any(item.nsfw for item in items)
 
     params = {
-        'title': '{} presents: "{}"'.format(conn.nick, text or "random images"),
-        'ids': ",".join([item.id for item in items]),
-        'layout': 'blog',
-        'account_url': None
+        "title": '{} presents: "{}"'.format(conn.nick, text or "random images"),
+        "ids": ",".join([item.id for item in items]),
+        "layout": "blog",
+        "account_url": None,
     }
     album = container.api.create_album(params)
 

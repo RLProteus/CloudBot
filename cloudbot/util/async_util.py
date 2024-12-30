@@ -3,11 +3,10 @@ Wraps various asyncio functions
 """
 
 import asyncio
-import sys
 from asyncio import AbstractEventLoop
 from asyncio.tasks import Task
 from functools import partial
-from typing import List
+from typing import List, Optional, cast
 
 from cloudbot.util.func_utils import call_with_args
 
@@ -52,30 +51,19 @@ async def run_func_with_args(loop, func, arg_data, executor=None):
 def run_coroutine_threadsafe(coro, loop):
     """
     Runs a coroutine in a threadsafe manner
-    :type coro: coroutine
-    :type loop: asyncio.AbstractEventLoop
     """
     if not asyncio.iscoroutine(coro):
         raise TypeError("A coroutine object is required")
 
-    if sys.version_info < (3, 5, 1):
-        loop.call_soon_threadsafe(partial(wrap_future, coro, loop=loop))
-    else:
-        asyncio.run_coroutine_threadsafe(coro, loop)
+    asyncio.run_coroutine_threadsafe(coro, loop)
 
 
-def create_future(loop=None):
-    if loop is None:
-        loop = asyncio.get_event_loop()
-
-    if sys.version_info < (3, 5, 2):
-        return asyncio.Future(loop=loop)
-
+def create_future(loop):
     return loop.create_future()
 
 
-def get_all_tasks(loop: AbstractEventLoop = None) -> List[Task]:
+def get_all_tasks(loop: Optional[AbstractEventLoop] = None) -> List[Task]:
     """
     Get a list of all tasks for the current loop
     """
-    return _asyncio_get_tasks(loop)
+    return cast(List[Task], _asyncio_get_tasks(loop))

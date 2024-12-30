@@ -1,7 +1,8 @@
 import socket
 
-from mcstatus import MinecraftServer
-from mcstatus.pinger import PingResponse
+# TODO(linuxdaemon): Implement bedrock support
+from mcstatus import JavaServer as MinecraftServer
+from mcstatus.status_response import JavaStatusResponse
 
 from cloudbot import hook
 from cloudbot.util import colors
@@ -43,11 +44,11 @@ def mcping(text):
     """<server[:port]> - gets info about the Minecraft server at <server[:port]>"""
     try:
         server = MinecraftServer.lookup(text)
-    except (IOError, ValueError) as e:
+    except (OSError, ValueError) as e:
         return str(e)
 
     try:
-        s = server.status()  # type: PingResponse
+        s: JavaStatusResponse = server.status()
     except socket.gaierror:
         return "Invalid hostname"
     except socket.timeout:
@@ -56,13 +57,12 @@ def mcping(text):
         return "Connection refused"
     except ConnectionError:
         return "Connection error"
-    except (IOError, ValueError) as e:
-        return "Error pinging server: {}".format(e)
+    except (OSError, ValueError) as e:
+        return f"Error pinging server: {e}"
 
-    if isinstance(s.description, dict):
-        description = format_colors(" ".join(s.description["text"].split()))
-    else:
-        description = format_colors(" ".join(s.description.split()))
+    motd = s.motd.to_minecraft()
+
+    description = format_colors(" ".join(motd.split()))
 
     output_format = colors.parse(
         "{}$(clear) - $(bold){}$(clear) - $(bold){:.1f}ms$(clear) - $(bold){}/{}$(clear) players"

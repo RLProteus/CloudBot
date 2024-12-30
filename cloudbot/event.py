@@ -6,6 +6,8 @@ from typing import Any, Iterator, Mapping
 
 from irclib.parser import Message
 
+from cloudbot.util.database import Session
+
 logger = logging.getLogger("cloudbot")
 
 
@@ -22,28 +24,6 @@ class EventType(enum.Enum):
 
 
 class Event(Mapping[str, Any]):
-    """
-    :type bot: cloudbot.bot.CloudBot
-    :type conn: cloudbot.client.Client
-    :type hook: cloudbot.plugin_hooks.Hook
-    :type type: EventType
-    :type content: str
-    :type target: str
-    :type chan: str
-    :type nick: str
-    :type user: str
-    :type host: str
-    :type mask: str
-    :type db: sqlalchemy.orm.Session
-    :type db_executor: concurrent.futures.ThreadPoolExecutor
-    :type irc_raw: str
-    :type irc_prefix: str
-    :type irc_command: str
-    :type irc_paramlist: list[str]
-    :type irc_ctcp_text: str
-    :type irc_tags: irclib.parser.TagList
-    """
-
     def __init__(
         self,
         *,
@@ -65,7 +45,7 @@ class Event(Mapping[str, Any]):
         irc_command=None,
         irc_paramlist=None,
         irc_ctcp_text=None,
-        irc_tags=None
+        irc_tags=None,
     ):
         """
         All of these parameters except for `bot` and `hook` are optional.
@@ -92,23 +72,6 @@ class Event(Mapping[str, Any]):
         :param irc_paramlist: The list of params for the IRC command. If the last param is a content param, the ':'
                                 should be removed from the front.
         :param irc_ctcp_text: CTCP text if this message is a CTCP command
-        :type bot: cloudbot.bot.CloudBot
-        :type conn: cloudbot.client.Client
-        :type hook: cloudbot.plugin_hooks.Hook
-        :type base_event: cloudbot.event.Event
-        :type content: str
-        :type target: str
-        :type event_type: EventType
-        :type nick: str
-        :type user: str
-        :type host: str
-        :type mask: str
-        :type irc_raw: str
-        :type irc_prefix: str
-        :type irc_command: str
-        :type irc_paramlist: list[str]
-        :type irc_ctcp_text: str
-        :type irc_tags: irclib.parser.TagList
         """
         self.db = None
         self.db_executor = None
@@ -169,8 +132,8 @@ class Event(Mapping[str, Any]):
     def __getitem__(self, item: str) -> Any:
         try:
             return getattr(self, item)
-        except AttributeError:
-            raise KeyError(item)
+        except AttributeError as e:
+            raise KeyError(item) from e
 
     async def prepare(self):
         """
@@ -191,7 +154,7 @@ class Event(Mapping[str, Any]):
             # we're running a coroutine hook with a db, so initialise an executor pool
             self.db_executor = concurrent.futures.ThreadPoolExecutor(1)
             # be sure to initialize the db in the database executor, so it will be accessible in that thread.
-            self.db = await self.async_call(self.bot.db_session)
+            self.db = await self.async_call(Session)
 
     def prepare_threaded(self):
         """
@@ -209,7 +172,7 @@ class Event(Mapping[str, Any]):
         if "db" in self.hook.required_args:
             # logger.debug("Opening database session for {}:threaded=True".format(self.hook.description))
 
-            self.db = self.bot.db_session()
+            self.db = Session()
 
     async def close(self):
         """
@@ -248,9 +211,6 @@ class Event(Mapping[str, Any]):
 
     @property
     def event(self):
-        """
-        :rtype: Event
-        """
         return self
 
     @property
@@ -262,13 +222,12 @@ class Event(Mapping[str, Any]):
         return logger
 
     def message(self, message, target=None):
-        """sends a message to a specific or current channel/user
-        :type message: str
-        :type target: str
-        """
+        """sends a message to a specific or current channel/user"""
         if target is None:
             if self.chan is None:
-                raise ValueError("Target must be specified when chan is not assigned")
+                raise ValueError(
+                    "Target must be specified when chan is not assigned"
+                )
 
             target = self.chan
 
@@ -276,8 +235,7 @@ class Event(Mapping[str, Any]):
 
     def admin_log(self, message, broadcast=False):
         """Log a message in the current connections admin log
-        :type message: str
-        :type broadcast: bool
+
         :param message: The message to log
         :param broadcast: Should this be broadcast to all connections
         """
@@ -288,68 +246,64 @@ class Event(Mapping[str, Any]):
                 conn.admin_log(message, console=not broadcast)
 
     def reply(self, *messages, target=None):
-        """sends a message to the current channel/user with a prefix
-        :type message: str
-        :type target: str
-        """
+        """sends a message to the current channel/user with a prefix"""
         reply_ping = self.conn.config.get("reply_ping", True)
         if target is None:
             if self.chan is None:
-                raise ValueError("Target must be specified when chan is not assigned")
+                raise ValueError(
+                    "Target must be specified when chan is not assigned"
+                )
 
             target = self.chan
 
-        if not messages:  # if there are no messages specified, don't do anything
+        if not messages:
+            # if there are no messages specified, don't do anything
             return
 
         if target == self.nick or not reply_ping:
             self.conn.message(target, *messages)
         else:
             self.conn.message(
-                target, "({}) {}".format(self.nick, messages[0]), *messages[1:]
+                target, f"({self.nick}) {messages[0]}", *messages[1:]
             )
 
     def action(self, message, target=None):
         """sends an action to the current channel/user
         or a specific channel/user
-        :type message: str
-        :type target: str
         """
         if target is None:
             if self.chan is None:
-                raise ValueError("Target must be specified when chan is not assigned")
+                raise ValueError(
+                    "Target must be specified when chan is not assigned"
+                )
 
             target = self.chan
 
         self.conn.action(target, message)
 
     def ctcp(self, message, ctcp_type, target=None):
-        """sends an ctcp to the current channel/user or a specific channel/user
-        :type message: str
-        :type ctcp_type: str
-        :type target: str
-        """
+        """sends an ctcp to the current channel/user or a specific channel/user"""
         if target is None:
             if self.chan is None:
-                raise ValueError("Target must be specified when chan is not assigned")
+                raise ValueError(
+                    "Target must be specified when chan is not assigned"
+                )
 
             target = self.chan
 
         if not hasattr(self.conn, "ctcp"):
             raise ValueError("CTCP can only be used on IRC connections")
 
-        # noinspection PyUnresolvedReferences
         self.conn.ctcp(target, ctcp_type, message)
 
     def notice(self, message, target=None):
-        """sends a notice to the current channel/user or a specific channel/user
-        :type message: str
-        :type target: str
-        """
+        """sends a notice to the current channel/user or a specific channel/user"""
         avoid_notices = self.conn.config.get("avoid_notices", False)
         if target is None:
             if self.nick is None:
-                raise ValueError("Target must be specified when nick is not assigned")
+                raise ValueError(
+                    "Target must be specified when nick is not assigned"
+                )
 
             target = self.nick
 
@@ -360,26 +314,23 @@ class Event(Mapping[str, Any]):
             self.conn.notice(target, message)
 
     def has_permission(self, permission, notice=True):
-        """ returns whether or not the current user has a given permission
-        :type permission: str
-        :rtype: bool
-        """
+        """returns whether or not the current user has a given permission"""
         if not self.mask:
             raise ValueError("has_permission requires mask is not assigned")
 
-        return self.conn.permissions.has_perm_mask(self.mask, permission, notice=notice)
+        return self.conn.permissions.has_perm_mask(
+            self.mask, permission, notice=notice
+        )
 
     async def check_permission(self, permission, notice=True):
-        """ returns whether or not the current user has a given permission
-        :type permission: str
-        :type notice: bool
-        :rtype: bool
-        """
+        """returns whether or not the current user has a given permission"""
         if self.has_permission(permission, notice=notice):
             return True
 
         for perm_hook in self.bot.plugin_manager.perm_hooks[permission]:
-            ok, res = await self.bot.plugin_manager.internal_launch(perm_hook, self)
+            ok, res = await self.bot.plugin_manager.internal_launch(
+                perm_hook, Event(base_event=self, hook=perm_hook)
+            )
             if ok and res:
                 return True
 
@@ -412,12 +363,6 @@ class Event(Mapping[str, Any]):
 
 
 class CommandEvent(Event):
-    """
-    :type hook: cloudbot.plugin_hooks.CommandHook
-    :type text: str
-    :type triggered_command: str
-    """
-
     def __init__(
         self,
         *,
@@ -440,13 +385,11 @@ class CommandEvent(Event):
         irc_raw=None,
         irc_prefix=None,
         irc_command=None,
-        irc_paramlist=None
+        irc_paramlist=None,
     ):
         """
         :param text: The arguments for the command
         :param triggered_command: The command that was triggered
-        :type text: str
-        :type triggered_command: str
         """
         super().__init__(
             bot=bot,
@@ -476,8 +419,6 @@ class CommandEvent(Event):
     def notice_doc(self, target=None):
         """sends a notice containing this command's docstring to
         the current channel/user or a specific channel/user
-
-        :type target: str
         """
         if self.triggered_command is None:
             raise ValueError("Triggered command not set on this event")
@@ -495,11 +436,6 @@ class CommandEvent(Event):
 
 
 class RegexEvent(Event):
-    """
-    :type hook: cloudbot.plugin_hooks.RegexHook
-    :type match: re.__Match
-    """
-
     def __init__(
         self,
         *,
@@ -520,11 +456,10 @@ class RegexEvent(Event):
         irc_raw=None,
         irc_prefix=None,
         irc_command=None,
-        irc_paramlist=None
+        irc_paramlist=None,
     ):
         """
         :param: match: The match objected returned by the regex search method
-        :type match: re.__Match
         """
         super().__init__(
             bot=bot,
@@ -567,7 +502,9 @@ class IrcOutEvent(Event):
             try:
                 self.parsed_line = Message.parse(self.line)
             except Exception:
-                logger.exception("Unable to parse line requested by hook %s", self.hook)
+                logger.exception(
+                    "Unable to parse line requested by hook %s", self.hook
+                )
                 self.parsed_line = None
 
     def prepare_threaded(self):
@@ -577,7 +514,9 @@ class IrcOutEvent(Event):
             try:
                 self.parsed_line = Message.parse(self.line)
             except Exception:
-                logger.exception("Unable to parse line requested by hook %s", self.hook)
+                logger.exception(
+                    "Unable to parse line requested by hook %s", self.hook
+                )
                 self.parsed_line = None
 
     @property
@@ -593,7 +532,7 @@ class PostHookEvent(Event):
         launched_event=None,
         result=None,
         error=None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.launched_hook = launched_hook

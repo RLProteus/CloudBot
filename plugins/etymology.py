@@ -6,6 +6,7 @@ Authors:
     - Scaevolus
     - linuxdaemon <linuxdaemon@snoonet.org>
 """
+
 import re
 
 import requests
@@ -18,12 +19,9 @@ from cloudbot.util.http import parse_soup
 
 @hook.command("e", "etymology")
 def etymology(text, reply):
-    """<word> - retrieves the etymology of <word>
+    """<word> - retrieves the etymology of <word>"""
 
-    :type text: str
-    """
-
-    url = 'http://www.etymonline.com/index.php'
+    url = "http://www.etymonline.com/index.php"
 
     response = requests.get(url, params={"term": text})
 
@@ -31,22 +29,22 @@ def etymology(text, reply):
         response.raise_for_status()
     except HTTPError as e:
         if e.response.status_code == 404:
-            return "No etymology found for {} :(".format(text)
-        reply("Error reaching etymonline.com: {}".format(e.response.status_code))
+            return f"No etymology found for {text} :("
+        reply(f"Error reaching etymonline.com: {e.response.status_code}")
         raise
 
     if response.status_code != requests.codes.ok:
-        return "Error reaching etymonline.com: {}".format(response.status_code)
+        return f"Error reaching etymonline.com: {response.status_code}"
 
     soup = parse_soup(response.text)
 
-    block = soup.find('div', class_=re.compile("word--.+"))
+    block = soup.find("div", class_=re.compile("word--.+"))
 
-    etym = ' '.join(e.text for e in block.div)
+    etym = " ".join(e.text for e in block.div)
 
-    etym = ' '.join(etym.splitlines())
+    etym = " ".join(etym.splitlines())
 
-    etym = ' '.join(etym.split())
+    etym = " ".join(etym.split())
 
     etym = formatting.truncate(etym, 200)
 

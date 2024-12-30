@@ -1,24 +1,22 @@
-SQLAlchemy==1.3.22
-attrs==20.3.0
-beautifulsoup4==4.9.3
-chardet==3.0.4
-cleverwrap==0.3.0.2
-feedparser==6.0.2
+SQLAlchemy == 1.4.32
+attrs == 23.2.0
+beautifulsoup4 == 4.12.3
+chardet == 5.2.0
+cleverwrap == 0.3.0.2
+feedparser == 6.0.11
 pyowm == 3.3.0
-geoip2==4.8.0
-googlemaps==4.4.2
-imgurpython==1.1.7
-isodate==0.6.0
-lxml==5.3.0
-mcstatus==4.1.0
-multidict==5.1.0
-nltk==3.9
-psutil==5.8.0
-py-irclib==0.3.0
-requests==2.32.3
-tweepy==3.10.0
-urllib3==2.2.3
-venusian==3.1.0
-watchdog==1.0.2
-yarl==1.13.1
+googlemaps == 4.10.0
+imgurpython == 1.1.7
+isodate == 0.6.1
+lxml == 5.1.0
+mcstatus == 11.1.1
+multidict == 6.0.5
+nltk == 3.8.1
+psutil == 5.9.8
+py-irclib == 0.3.0
+pyowm == 3.3.0
+requests == 2.32.3
+urllib3 == 2.2.2
+watchdog == 4.0.0
+yarl == 1.9.4
 google-cloud-storage==2.19.0

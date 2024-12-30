@@ -10,9 +10,7 @@ License:
     GPL v3
 """
 
-import codecs
 import json
-import os
 
 from cloudbot import hook
 from cloudbot.util import formatting, textgen
@@ -20,32 +18,35 @@ from cloudbot.util import formatting, textgen
 
 def get_generator(_json):
     data = json.loads(_json)
-    return textgen.TextGenerator(data["templates"],
-                                 data["parts"], default_templates=data["default_templates"])
+    return textgen.TextGenerator(
+        data["templates"],
+        data["parts"],
+        default_templates=data["default_templates"],
+    )
 
 
 @hook.command(autohelp=False)
 def namegen(text, bot, notice):
     """[generator|list] - generates some names using the chosen generator, or lists all generators
     if 'list' is specified
-
-    :type bot: cloudbot.bot.CloudBot
     """
 
     # clean up the input
     inp = text.strip().lower()
 
     # get a list of available name generators
-    files = os.listdir(os.path.join(bot.data_dir, "name_files"))
-    all_modules = [os.path.splitext(i)[0] for i in files if os.path.splitext(i)[1] == ".json"]
+    path = bot.data_path / "name_files"
+    files = path.glob("*.json")
+    module_map = {file.stem: file for file in files}
+    all_modules = list(module_map.keys())
     all_modules.sort()
 
     # command to return a list of all available generators
     if inp == "list":
         message = "Available generators: "
-        message += formatting.get_text_list(all_modules, 'and')
+        message += formatting.get_text_list(all_modules, "and")
         notice(message)
-        return
+        return None
 
     if inp:
         selected_module = inp.split()[0]
@@ -53,21 +54,22 @@ def namegen(text, bot, notice):
         # make some generic fantasy names
         selected_module = "fantasy"
 
-    # check if the selected module is valid
-    if selected_module not in all_modules:
-        return "{} is not a valid name generator.".format(inp)
-
     # load the name generator
-    path = os.path.join(bot.data_dir, "name_files", "{}.json".format(selected_module))
+    try:
+        path = module_map[selected_module]
+    except KeyError:
+        return f"{inp} is not a valid name generator."
 
-    with codecs.open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         try:
             generator = get_generator(f.read())
         except ValueError as error:
-            return "Unable to read name file: {}".format(error)
+            return f"Unable to read name file: {error}"
 
     # time to generate some names
     name_list = generator.generate_strings(10)
 
     # and finally return the final message :D
-    return "Some names to ponder: {}.".format(formatting.get_text_list(name_list, 'and'))
+    return "Some names to ponder: {}.".format(
+        formatting.get_text_list(name_list, "and")
+    )

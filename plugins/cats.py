@@ -6,8 +6,10 @@ from cloudbot import hook
 
 def get_data(url, reply, bot, params=None):
     try:
-        r = requests.get(url, headers={'User-Agent': bot.user_agent}, params=params)
-        r.raise_for_status()
+        with requests.get(
+            url, headers={"User-Agent": bot.user_agent}, params=params
+        ) as r:
+            r.raise_for_status()
     except HTTPError:
         reply("API error occurred.")
         raise
@@ -18,9 +20,11 @@ def get_data(url, reply, bot, params=None):
 @hook.command(autohelp=False)
 def cats(reply, bot):
     """- gets a fucking fact about cats."""
-    r = get_data('https://catfact.ninja/fact', reply, bot, params={'max_length': 100})
+    r = get_data(
+        "https://catfact.ninja/fact", reply, bot, params={"max_length": 100}
+    )
     json = r.json()
-    response = json['fact']
+    response = json["fact"]
     return response
 
 
@@ -28,4 +32,4 @@ def cats(reply, bot):
 def catgifs(reply, bot):
     """- gets a fucking cat gif."""
     r = get_data("http://marume.herokuapp.com/random.gif", reply, bot)
-    return "OMG A CAT GIF: {}".format(r.url)
+    return f"OMG A CAT GIF: {r.url}"

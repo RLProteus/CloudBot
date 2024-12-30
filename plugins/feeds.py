@@ -1,7 +1,7 @@
 import feedparser
 
 from cloudbot import hook
-from cloudbot.util import web, formatting
+from cloudbot.util import formatting, web
 
 
 class FeedAlias:
@@ -11,42 +11,41 @@ class FeedAlias:
 
 
 ALIASES = {
-    'xkcd': FeedAlias('http://xkcd.com/rss.xml'),
-
-    'ars': FeedAlias('http://feeds.arstechnica.com/arstechnica/index'),
-
-    'pip': FeedAlias('https://pypi.python.org/pypi?%3Aaction=rss', 6),
-    'pypi': FeedAlias('https://pypi.python.org/pypi?%3Aaction=rss', 6),
-    'py': FeedAlias('https://pypi.python.org/pypi?%3Aaction=rss', 6),
-
-    'pipnew': FeedAlias('https://pypi.python.org/pypi?%3Aaction=packages_rss', 5),
-    'pypinew': FeedAlias('https://pypi.python.org/pypi?%3Aaction=packages_rss', 5),
-    'pynew': FeedAlias('https://pypi.python.org/pypi?%3Aaction=packages_rss', 5),
-
-    'world': FeedAlias(
-        'https://news.google.com/news?cf=all&ned=us&hl=en&topic=w&output=rss'
+    "xkcd": FeedAlias("http://xkcd.com/rss.xml"),
+    "ars": FeedAlias("http://feeds.arstechnica.com/arstechnica/index"),
+    "pip": FeedAlias("https://pypi.python.org/pypi?%3Aaction=rss", 6),
+    "pypi": FeedAlias("https://pypi.python.org/pypi?%3Aaction=rss", 6),
+    "py": FeedAlias("https://pypi.python.org/pypi?%3Aaction=rss", 6),
+    "pipnew": FeedAlias(
+        "https://pypi.python.org/pypi?%3Aaction=packages_rss", 5
     ),
-
-    'us': FeedAlias(
-        'https://news.google.com/news?cf=all&ned=us&hl=en&topic=n&output=rss'
+    "pypinew": FeedAlias(
+        "https://pypi.python.org/pypi?%3Aaction=packages_rss", 5
     ),
-    'usa': FeedAlias(
-        'https://news.google.com/news?cf=all&ned=us&hl=en&topic=n&output=rss'
+    "pynew": FeedAlias(
+        "https://pypi.python.org/pypi?%3Aaction=packages_rss", 5
     ),
-
-    'nz': FeedAlias(
-        'https://news.google.com/news?pz=1&cf=all&ned=nz&hl=en&topic=n&output=rss'
+    "world": FeedAlias(
+        "https://news.google.com/news?cf=all&ned=us&hl=en&topic=w&output=rss"
     ),
-
-    'anand': FeedAlias('http://www.anandtech.com/rss/'),
-    'anandtech': FeedAlias('http://www.anandtech.com/rss/'),
+    "us": FeedAlias(
+        "https://news.google.com/news?cf=all&ned=us&hl=en&topic=n&output=rss"
+    ),
+    "usa": FeedAlias(
+        "https://news.google.com/news?cf=all&ned=us&hl=en&topic=n&output=rss"
+    ),
+    "nz": FeedAlias(
+        "https://news.google.com/news?pz=1&cf=all&ned=nz&hl=en&topic=n&output=rss"
+    ),
+    "anand": FeedAlias("http://www.anandtech.com/rss/"),
+    "anandtech": FeedAlias("http://www.anandtech.com/rss/"),
 }
 
 
 def format_item(item):
     url = web.try_shorten(item.link)
     title = formatting.strip_html(item.title)
-    return "{} ({})".format(title, url)
+    return f"{title} ({url})"
 
 
 @hook.command("feed", "rss", "news")
@@ -69,8 +68,8 @@ def rss(text):
     for item in feed.entries[:limit]:
         out.append(format_item(item))
 
-    if 'title' in feed.feed:
-        start = "\x02{}\x02: ".format(feed.feed.title)
+    if "title" in feed.feed:
+        start = f"\x02{feed.feed.title}\x02: "
     else:
         start = ""
 

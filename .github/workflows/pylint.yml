@@ -1,0 +1,28 @@
+name: Pylint analysis
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+    branches:
+    - main
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.8"
+        cache: "pip"
+        cache-dependency-path: |
+          **/*requirements*.txt
+
+    - name: Install apt deps
+      run: sudo apt-get update && sudo apt-get install -qq -y libxml2-dev libxslt1-dev
+    - name: Install dependencies
+      run: pip install -Ur requirements-dev.txt
+    - name: Run pylint
+      run: pre-commit run pylint --all

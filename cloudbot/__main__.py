@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import signal
@@ -9,14 +10,14 @@ from cloudbot.bot import CloudBot
 from cloudbot.util import async_util
 
 
-def main():
+async def async_main():
     # store the original working directory, for use when restarting
     original_wd = Path().resolve()
 
     # Logging optimizations, doing it here because we only want to change this if we're the main file
     logging._srcfile = None
-    logging.logThreads = 0
-    logging.logProcesses = 0
+    logging.logThreads = False
+    logging.logProcesses = False
 
     logger = logging.getLogger("cloudbot")
     logger.info("Starting CloudBot.")
@@ -33,7 +34,6 @@ def main():
     # define closure for signal handling
     # The handler is called with two arguments: the signal number and the current stack frame
     # These parameters should NOT be removed
-    # noinspection PyUnusedLocal
     def exit_gracefully(signum, frame):
         nonlocal stopped_while_restarting
         if not _bot:
@@ -41,7 +41,8 @@ def main():
             stopped_while_restarting = True
         else:
             async_util.run_coroutine_threadsafe(
-                _bot.stop("Killed (Received SIGINT {})".format(signum)), _bot.loop
+                _bot.stop(f"Killed (Received SIGINT {signum})"),
+                _bot.loop,
             )
 
         logger.warning("Bot received Signal Interrupt (%s)", signum)
@@ -51,10 +52,10 @@ def main():
 
     signal.signal(signal.SIGINT, exit_gracefully)
 
-    # start the bot master
+    # start the bot
 
     # CloudBot.run() will return True if it should restart, False otherwise
-    restart = _bot.run()
+    restart = await _bot.run()
 
     # the bot has stopped, do we want to restart?
     if restart:
@@ -72,6 +73,7 @@ def main():
             logger.debug("Restart arguments: %s", args)
             for f in [sys.stdout, sys.stderr]:
                 f.flush()
+
             # close logging, and exit the program.
             logger.debug("Stopping logging engine")
             logging.shutdown()
@@ -80,6 +82,10 @@ def main():
     # close logging, and exit the program.
     logger.debug("Stopping logging engine")
     logging.shutdown()
+
+
+def main():
+    asyncio.run(async_main())
 
 
 if __name__ == "__main__":

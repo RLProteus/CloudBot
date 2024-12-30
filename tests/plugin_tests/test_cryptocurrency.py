@@ -1,6 +1,6 @@
 import re
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Any, Dict, List
 from unittest.mock import MagicMock
 
 import pytest
@@ -58,6 +58,7 @@ def init_response(
     check_api_key=False,
     pct_change=18.9,
     show_btc=True,
+    price=50000000000.0,
 ):
     if check_api_key:
         cryptocurrency.init_api(bot.get())
@@ -106,13 +107,20 @@ def init_response(
                         "elapsed": 1,
                         "credit_count": 1,
                     },
-                    "data": [{"id": 1, "name": "Dollar", "sign": "$", "symbol": "USD"}],
+                    "data": [
+                        {
+                            "id": 1,
+                            "name": "Dollar",
+                            "sign": "$",
+                            "symbol": "USD",
+                        }
+                    ],
                 },
             )
         )
 
     if quote:
-        response_data = {
+        response_data: Dict[str, Any] = {
             "1": {
                 "id": 1,
                 "name": "Bitcoin",
@@ -127,13 +135,15 @@ def init_response(
                 "tags": [],
                 "quote": {
                     "USD": {
-                        "price": 50000000000,
+                        "price": price,
                         "volume_24h": 20,
                         "market_cap": 92,
                         "percent_change_1h": 14.5,
                         "percent_change_24h": pct_change,
                         "percent_change_7d": 24.5,
-                        "last_updated": (now - timedelta(minutes=3)).strftime(iso_fmt),
+                        "last_updated": (now - timedelta(minutes=3)).strftime(
+                            iso_fmt
+                        ),
                     },
                 },
             },
@@ -216,7 +226,8 @@ def test_complex_schema():
 
 def test_invalid_schema_type():
     with pytest.raises(
-        TypeError, match="field 'a' expected type <class 'str'>, got type <class 'int'>"
+        TypeError,
+        match="field 'a' expected type <class 'str'>, got type <class 'int'>",
     ):
         cryptocurrency.read_data({"a": 1, "b": "world"}, OtherConcreteSchema)
 
@@ -239,14 +250,18 @@ def test_schema_nested_exceptions():
         cryptocurrency.read_data({"a": {"b": "hello"}}, NestedSchema)
 
     assert isinstance(exc.value.__cause__, cryptocurrency.ParseError)
-    assert isinstance(exc.value.__cause__.__cause__, cryptocurrency.MissingSchemaField)
+    assert isinstance(
+        exc.value.__cause__.__cause__, cryptocurrency.MissingSchemaField
+    )
 
 
 def test_schema_unknown_fields():
     input_data = {"a": {"a": "hello", "b": "world"}, "c": 1}
     with pytest.warns(
         UserWarning,
-        match=re.escape("Unknown fields: ['c'] while parsing schema 'NestedSchema'"),
+        match=re.escape(
+            "Unknown fields: ['c'] while parsing schema 'NestedSchema'"
+        ),
     ):
         obj = cryptocurrency.read_data(input_data, NestedSchema)
 
@@ -263,6 +278,24 @@ def test_cache(freeze_time):
     assert c.get("foo").value == "bar"
     freeze_time.tick()
     assert c.get("foo") is None
+
+
+@pytest.mark.parametrize(
+    "price,out",
+    [
+        (1, "1.00"),
+        (50000, "50,000.00"),
+        (10.2548, "10.25"),
+        (0.1, "0.10"),
+        (0.0241, "0.0241"),
+        (0.00241, "0.00241"),
+        (0.000241, "0.000241"),
+        (0.0000241, "0.0000241"),
+        (0.001231549654135151564, "0.0012315497"),
+    ],
+)
+def test_format_price(price, out):
+    assert cryptocurrency.format_price(price) == out
 
 
 def test_crypto_cmd(mock_requests):
@@ -423,11 +456,13 @@ def test_cmd_api_error(mock_requests):
         channel="#foo",
         nick="foobaruser",
     )
-    res = []
+    res: List[HookResult] = []
     with pytest.raises(cryptocurrency.APIError, match="FooBar"):
         wrap_hook_response(cryptocurrency.crypto_command, event, res)
 
-    assert res == [HookResult("message", ("#foo", "(foobaruser) Unknown API error"))]
+    assert res == [
+        HookResult("message", ("#foo", "(foobaruser) Unknown API error"))
+    ]
 
 
 def test_list_currencies(patch_paste, mock_requests):

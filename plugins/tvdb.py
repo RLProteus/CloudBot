@@ -25,6 +25,7 @@ from cloudbot import hook
 from cloudbot.bot import CloudBot
 from cloudbot.event import Event
 from cloudbot.util import func_utils
+from cloudbot.util.http import GetParams
 
 logger = logging.getLogger(__name__)
 token_lifetime = datetime.timedelta(hours=1)
@@ -33,7 +34,6 @@ JsonPrimitive = Union[int, str, bool, None]
 JsonObject = Dict[
     str, Union[JsonPrimitive, List[JsonPrimitive], Dict[str, JsonPrimitive]]
 ]
-GetParams = Dict[str, Union[str, int]]
 
 
 class NoMatchingSeries(LookupError):
@@ -43,14 +43,14 @@ class NoMatchingSeries(LookupError):
 class TvdbApi:
     def __init__(self) -> None:
         self.token_lifetime = token_lifetime
-        self._headers = None  # type: Optional[Dict[str, str]]
+        self._headers: Optional[Dict[str, str]] = None
         self.base_url = "https://api.thetvdb.com"
         self.api_version = "3.0.0"
         self.default_headers = {
-            "Accept": "application/vnd.thetvdb.v{}".format(self.api_version)
+            "Accept": f"application/vnd.thetvdb.v{self.api_version}"
         }
 
-        self.jwt_token = None  # type: Optional[str]
+        self.jwt_token: Optional[str] = None
         self.refresh_time = datetime.datetime.min
 
     @property
@@ -60,7 +60,9 @@ class TvdbApi:
     def set_api_key(self, bot: CloudBot) -> None:
         res = cast(
             Dict[str, str],
-            self._post("/login", json={"apikey": bot.config.get_api_key("tvdb")}),
+            self._post(
+                "/login", json={"apikey": bot.config.get_api_key("tvdb")}
+            ),
         )
         self.set_token(res["token"])
 
@@ -93,7 +95,10 @@ class TvdbApi:
             return cast(JsonObject, response.json())
 
     def _get_paged(
-        self, path: str, params: Optional[GetParams] = None, reverse: bool = False
+        self,
+        path: str,
+        params: Optional[GetParams] = None,
+        reverse: bool = False,
     ) -> Iterable[JsonObject]:
         params = params or {}
         params["page"] = 1
@@ -144,7 +149,7 @@ class TvdbApi:
 
         self._headers = self.default_headers.copy()
         if self.jwt_token:
-            self._headers["Authorization"] = "Bearer {}".format(self.jwt_token)
+            self._headers["Authorization"] = f"Bearer {self.jwt_token}"
 
         return self._headers
 
@@ -156,14 +161,16 @@ class TvdbApi:
             )
         except requests.HTTPError as e:
             if e.response.status_code == 404:
-                raise NoMatchingSeries(name)
+                raise NoMatchingSeries(name) from e
 
             raise
 
-    def get_episodes(self, series_id: str, reverse=True) -> Iterable[JsonObject]:
+    def get_episodes(
+        self, series_id: str, reverse=True
+    ) -> Iterable[JsonObject]:
         try:
             for page in self._get_paged(
-                "/series/{id}/episodes".format(id=series_id), reverse=reverse
+                f"/series/{series_id}/episodes", reverse=reverse
             ):
                 data = cast(List[JsonObject], page["data"])
                 if not reverse:
@@ -202,7 +209,7 @@ class Holder(Generic[T]):
     """
 
     def __init__(self) -> None:
-        self._item = None  # type: Optional[T]
+        self._item: Optional[T] = None
         self._set = False
 
     def set(self, item: T) -> None:
@@ -224,7 +231,7 @@ class Holder(Generic[T]):
         return obj
 
     @classmethod
-    def of_optional(cls, item: T) -> "Holder[T]":
+    def of_optional(cls, item: Optional[T]) -> "Holder[T]":
         obj = cls()
         if item is not None:
             obj.set(item)
@@ -238,7 +245,7 @@ class Holder(Generic[T]):
         if not self._set:
             raise MissingItem()
 
-        return cast(T, self._item)
+        return self._item
 
 
 class LazyCollection(Sized, Iterable[T], Container[T]):
@@ -263,10 +270,21 @@ class LazyCollection(Sized, Iterable[T], Container[T]):
     Traceback (most recent call last):
         ...
     IndexError: list index out of range
+    >>> col = LazyCollection(['a'])
+    >>> 'c' in col
+    False
+    >>> col = LazyCollection(['a', 'b', 'c'])
+    >>> list(col)
+    ['a', 'b', 'c']
+    >>> col = LazyCollection(['a'])
+    >>> col[0]
+    'a'
+    >>> col[0]
+    'a'
     """
 
     def __init__(self, it: Iterable[T]) -> None:
-        self._data = []  # type: List[T]
+        self._data: List[T] = []
         self._it = iter(it)
         self._complete = False
 
@@ -288,10 +306,10 @@ class LazyCollection(Sized, Iterable[T], Container[T]):
         yield from self._data
         while True:
             holder = self._get_next()
-            if holder.exists():
-                yield holder.get()
-            else:
+            if not holder.exists():
                 break
+
+            yield holder.get()
 
     def __contains__(self, needle: object) -> bool:
         if needle in self._data:
@@ -328,12 +346,10 @@ class LazyCollection(Sized, Iterable[T], Container[T]):
             self._gen_to_index(i)
 
     @overload
-    def __getitem__(self, item: int) -> T:
-        ...
+    def __getitem__(self, item: int) -> T: ...
 
     @overload
-    def __getitem__(self, item: slice) -> List[T]:
-        ...
+    def __getitem__(self, item: slice) -> List[T]: ...
 
     def __getitem__(self, item: Union[int, slice]) -> Union[T, List[T]]:
         if isinstance(item, slice):
@@ -364,7 +380,9 @@ class EpisodeInfo:
         if not first_aired:
             air_date = None
         else:
-            air_date = datetime.datetime.strptime(first_aired, "%Y-%m-%d").date()
+            air_date = datetime.datetime.strptime(
+                first_aired, "%Y-%m-%d"
+            ).date()
 
         episode_number = json["airedEpisodeNumber"]
         season = json["airedSeason"]
@@ -382,13 +400,13 @@ class EpisodeInfo:
 
     @property
     def full_number(self) -> str:
-        return "S{:02d}E{:02d}".format(self.season, self.episode_number)
+        return f"S{self.season:02d}E{self.episode_number:02d}"
 
     @property
     def description(self) -> str:
-        episode_desc = "{}".format(self.full_number)
+        episode_desc = f"{self.full_number}"
         if self.name:
-            episode_desc += " - {}".format(self.name)
+            episode_desc += f" - {self.name}"
 
         return episode_desc
 
@@ -422,14 +440,16 @@ def get_episodes_for_series(series_name: str) -> SeriesInfo:
     return SeriesInfo(cast(str, series["seriesName"]), episodes, status)
 
 
-def check_and_get_series(series: str) -> Tuple[bool, Union[SeriesInfo, str]]:
+def check_and_get_series(
+    series: str,
+) -> Union[Tuple[SeriesInfo, None], Tuple[None, str]]:
     if not api.authed:
-        return False, "TVDB API not enabled."
+        return None, "TVDB API not enabled."
 
     try:
-        return True, get_episodes_for_series(series)
+        return get_episodes_for_series(series), None
     except NoMatchingSeries:
-        return False, "Unable to find series"
+        return None, "Unable to find series"
 
 
 def handle_error(event: Event, error):
@@ -461,12 +481,12 @@ def refresh(bot: CloudBot) -> None:
 @_error_handler(requests.HTTPError, handle_error)
 def tv_next(text: str) -> str:
     """<series> - Get the next episode of <series>."""
-    ok, series = check_and_get_series(text)
-    if not ok:
-        return series
+    series, err = check_and_get_series(text)
+    if err is not None:
+        return err
 
     if series.ended:
-        return "{} has ended.".format(series.name)
+        return f"{series.name} has ended."
 
     next_eps = []
     today = datetime.date.today()
@@ -482,13 +502,13 @@ def tv_next(text: str) -> str:
         else:
             date_str = str(episode.first_aired)
 
-        next_eps.append("{} ({})".format(date_str, episode.description))
+        next_eps.append(f"{date_str} ({episode.description})")
 
     if not next_eps:
-        return "There are no new episodes scheduled for {}.".format(series.name)
+        return f"There are no new episodes scheduled for {series.name}."
 
     if len(next_eps) == 1:
-        return "The next episode of {} airs {}".format(series.name, next_eps[0])
+        return f"The next episode of {series.name} airs {next_eps[0]}"
 
     return "The next episodes of {}: {}".format(
         series.name, ", ".join(reversed(next_eps))
@@ -499,9 +519,9 @@ def tv_next(text: str) -> str:
 @_error_handler(requests.HTTPError, handle_error)
 def tv_last(text: str) -> str:
     """<series> - Gets the most recently aired episode of <series>."""
-    ok, series = check_and_get_series(text)
-    if not ok:
-        return series
+    series, err = check_and_get_series(text)
+    if err is not None:
+        return err
 
     prev_ep = None
     today = datetime.date.today()
@@ -511,13 +531,17 @@ def tv_last(text: str) -> str:
             continue
 
         if episode.first_aired < today:
-            prev_ep = "{} ({})".format(episode.first_aired, episode.description)
+            prev_ep = f"{episode.first_aired} ({episode.description})"
             break
 
     if not prev_ep:
-        return "There are no previously aired episodes for {}.".format(series.name)
+        return "There are no previously aired episodes for {}.".format(
+            series.name
+        )
 
     if series.ended:
-        return "{} ended. The last episode aired {}.".format(series.name, prev_ep)
+        return "{} ended. The last episode aired {}.".format(
+            series.name, prev_ep
+        )
 
-    return "The last episode of {} aired {}.".format(series.name, prev_ep)
+    return f"The last episode of {series.name} aired {prev_ep}."

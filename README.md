@@ -1,15 +1,15 @@
 # CloudBot
 ![Python application](https://github.com/TotallyNotRobots/CloudBot/workflows/Python%20application/badge.svg)
-[![CodeFactor](https://www.codefactor.io/repository/github/totallynotrobots/cloudbot/badge/master)](https://www.codefactor.io/repository/github/totallynotrobots/cloudbot/overview/master)
-[![codebeat badge](https://codebeat.co/badges/80316f30-26c0-44ec-b228-9158815d1995)](https://codebeat.co/projects/github-com-totallynotrobots-cloudbot-master)
-[![codecov](https://codecov.io/gh/TotallyNotRobots/CloudBot/branch/master/graph/badge.svg)](https://codecov.io/gh/TotallyNotRobots/CloudBot)
+[![CodeFactor](https://www.codefactor.io/repository/github/totallynotrobots/cloudbot/badge/main)](https://www.codefactor.io/repository/github/totallynotrobots/cloudbot/overview/main)
+[![codebeat badge](https://codebeat.co/badges/a684cbb3-15a0-4ff2-a8cd-7d9cfad2ce2a)](https://codebeat.co/projects/github-com-totallynotrobots-cloudbot-main)
+[![codecov](https://codecov.io/gh/TotallyNotRobots/CloudBot/branch/main/graph/badge.svg)](https://codecov.io/gh/TotallyNotRobots/CloudBot)
 
 CloudBot is a simple, fast, expandable open-source Python IRC Bot!
 
 ## Getting CloudBot
 
 You have a few options for getting the bot, you can:
-* Clone the `master` branch of this repository, using `git pull` to update
+* Clone the `main` branch of this repository, using `git pull` to update
 * Download the [latest source]
 * Download the [latest release]
 
@@ -47,9 +47,6 @@ root@799cd5dca084:/# python -m cloudbot
 
 The CloudBot documentation is currently somewhat outdated and may not be correct. If you need any help, please visit our [IRC channel](#support) and we will be happy to assist you.
 
-To write your own plugins, visit the [Plugins Wiki Page](https://github.com/TotallyNotRobots/CloudBot/wiki/Writing-your-first-command-plugin).
-
-More at the [Wiki Main Page](https://github.com/TotallyNotRobots/CloudBot/wiki).
 
 ### Support
 
@@ -88,17 +85,12 @@ CloudBot is **licensed** under the **GPL v3** license. The terms are as follows.
     You should have received a copy of the GNU General Public License
     along with CloudBot.  If not, see <http://www.gnu.org/licenses/>.
 
-This product includes GeoLite2 data created by MaxMind, available from
-<a href="http://www.maxmind.com">http://www.maxmind.com</a>. GeoLite2 databases are distributed under the [Creative Commons Attribution-ShareAlike 3.0 Unported License](https://creativecommons.org/licenses/by-sa/3.0/)
-
 ![Powered by wordnik](https://www.wordnik.com/img/wordnik_badge_a1.png)
 
 TV information is provided by [TheTVDB.com], but we are not endorsed or certified by [TheTVDB.com] or its affiliates.
 
-Translations are Powered by [Yandex.Translate](https://translate.yandex.com)
-
 This product uses data from <a href="http://wordnik.com">http://wordnik.com</a> in accordance with the wordnik.com API <a href="http://developer.wordnik.com/#!/terms">terms of service</a>.
 
-[latest source]: https://github.com/TotallyNotRobots/CloudBot/archive/master.zip
+[latest source]: https://github.com/TotallyNotRobots/CloudBot/archive/main.zip
 [latest release]: https://github.com/TotallyNotRobots/CloudBot/releases/latest
 [TheTVDB.com]: https://thetvdb.com/

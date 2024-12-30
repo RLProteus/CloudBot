@@ -9,13 +9,16 @@ Created By:
 License:
     GPL v3
 """
+
 import inspect
 import time
+import typing
 import warnings
-from numbers import Number
+from decimal import Decimal
+from numbers import Real
 from operator import itemgetter
 from threading import RLock
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, cast
 
 import requests
 from requests import Response
@@ -45,7 +48,9 @@ class UnknownFiatCurrencyError(APIError):
 
 
 class APIResponse:
-    def __init__(self, api, data: "UntypedResponse", response: Response) -> None:
+    def __init__(
+        self, api, data: "UntypedResponse", response: Response
+    ) -> None:
         self.api = api
         self.data = data
         self.response = response
@@ -83,7 +88,9 @@ class SchemaMeta(type):
         if members.setdefault("_abstract", False):
             super_fields = ()
             for base in bases:
-                if not getattr(base, "_abstract", False) and isinstance(base, cls):
+                if not getattr(base, "_abstract", False) and isinstance(
+                    base, cls
+                ):
                     super_fields = getattr(base, "_fields")
                     break
 
@@ -94,16 +101,16 @@ class SchemaMeta(type):
         return type.__new__(cls, name, bases, members)
 
 
-T = TypeVar("T")
+T = TypeVar("T", bound="Schema")
 
 
 class Schema(metaclass=SchemaMeta):
-    # noinspection PyUnusedName
     _abstract = True
     _fields = ()
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.unknown_fields = {}
+        self.unknown_fields.update(kwargs)
 
     def cast_to(self, new_type: Type[T]) -> T:
         return read_data(serialize(self), new_type)
@@ -141,8 +148,9 @@ class UntypedResponse(APIRequestResponse):
 
 
 class Platform(Schema):
-    # noinspection PyShadowingBuiltins
-    def __init__(self, id: int, name: str, symbol: str, slug: str, token_address: str):
+    def __init__(
+        self, id: int, name: str, symbol: str, slug: str, token_address: str
+    ):
         super().__init__()
         self.id = id
         self.name = name
@@ -154,18 +162,18 @@ class Platform(Schema):
 class Quote(Schema):
     def __init__(
         self,
-        price: Number,
-        volume_24h: Number,
-        market_cap: Number,
-        percent_change_1h: Number,
-        percent_change_24h: Number,
-        percent_change_7d: Number,
+        price: Real,
+        volume_24h: Real,
+        market_cap: Real,
+        percent_change_1h: Real,
+        percent_change_24h: Real,
+        percent_change_7d: Real,
         last_updated: str,
-        volume_24h_reported: Number = None,
-        volume_7d: Number = None,
-        volume_7d_reported: Number = None,
-        volume_30d: Number = None,
-        volume_30d_reported: Number = None,
+        volume_24h_reported: Real = None,
+        volume_7d: Real = None,
+        volume_7d_reported: Real = None,
+        volume_30d: Real = None,
+        volume_30d_reported: Real = None,
     ):
         super().__init__()
         self.price = price
@@ -183,23 +191,22 @@ class Quote(Schema):
 
 
 class CryptoCurrency(Schema):
-    # noinspection PyShadowingBuiltins
     def __init__(
         self,
         id: int,
         name: str,
         symbol: str,
         slug: str,
-        circulating_supply: Number,
-        total_supply: Number,
+        circulating_supply: Real,
+        total_supply: Real,
         date_added: str,
         num_market_pairs: int,
         cmc_rank: int,
         last_updated: str,
         tags: List[str],
         quote: Dict[str, Quote],
-        max_supply: Number = None,
-        market_cap_by_total_supply: Number = None,
+        max_supply: Real = None,
+        market_cap_by_total_supply: Real = None,
         platform: Platform = None,
     ):
         super().__init__()
@@ -227,7 +234,6 @@ class QuoteRequestResponse(APIRequestResponse):
 
 
 class FiatCurrency(Schema):
-    # noinspection PyShadowingBuiltins
     def __init__(self, id: int, name: str, sign: str, symbol: str):
         super().__init__()
         self.id = id
@@ -241,11 +247,12 @@ class FiatCurrencyMap(APIRequestResponse):
         super().__init__(status)
         self.data = data
 
-        self.symbols = {currency.symbol: currency.sign for currency in self.data}
+        self.symbols = {
+            currency.symbol: currency.sign for currency in self.data
+        }
 
 
 class CryptoCurrencyEntry(Schema):
-    # noinspection PyShadowingBuiltins
     def __init__(
         self,
         id: int,
@@ -275,10 +282,12 @@ class CryptoCurrencyMap(APIRequestResponse):
         super().__init__(status)
         self.data = data
 
-        self.names = set(currency.symbol for currency in self.data)
+        self.names = {currency.symbol for currency in self.data}
 
 
-BAD_FIELD_TYPE_MSG = "field {field!r} expected type {exp_type!r}, got type {act_type!r}"
+BAD_FIELD_TYPE_MSG = (
+    "field {field!r} expected type {exp_type!r}, got type {act_type!r}"
+)
 
 
 def sentinel(name: str):
@@ -329,12 +338,9 @@ def _hydrate_object(_value, _cls):
         _assert_type(_value, dict)
         return read_data(_value, _cls)
 
-    try:
-        typing_cls = _cls.__origin__
-    except AttributeError:
-        pass
-    else:
-        type_args = _cls.__args__
+    typing_cls = typing.get_origin(_cls)
+    if typing_cls is not None:
+        type_args = typing.get_args(_cls)
         if issubclass(typing_cls, list):
             _assert_type(_value, list, _cls)
 
@@ -344,13 +350,14 @@ def _hydrate_object(_value, _cls):
             _assert_type(_value, dict, _cls)
 
             return {
-                _hydrate_object(k, type_args[0]): _hydrate_object(v, type_args[1])
+                _hydrate_object(k, type_args[0]): _hydrate_object(
+                    v, type_args[1]
+                )
                 for k, v in _value.items()
             }
 
-        raise TypeError(
-            "Can't match typing alias {!r}".format(typing_cls)
-        )  # pragma: no cover
+        # pragma: no cover
+        raise TypeError(f"Can't match typing alias {typing_cls!r}")
 
     _assert_type(_value, _cls)
 
@@ -358,12 +365,12 @@ def _hydrate_object(_value, _cls):
 
 
 def read_data(data: Dict, schema_cls: Type[T]) -> T:
-    fields = schema_cls._fields
+    fields: Tuple[SchemaField, ...] = schema_cls._fields
 
-    out = {}
-    field_names = []
+    out: Dict[str, Any] = {}
+    field_names: List[str] = []
 
-    for schema_field in fields:  # type: SchemaField
+    for schema_field in fields:
         try:
             param_type = schema_field.field_type
             name = schema_field.name
@@ -390,7 +397,7 @@ def read_data(data: Dict, schema_cls: Type[T]) -> T:
                 ) from e
         except (MissingSchemaField, TypeAssertError, ParseError) as e:
             raise ParseError(
-                "Unable to parse schema {!r}".format(schema_cls.__name__)
+                f"Unable to parse schema {schema_cls.__name__!r}"
             ) from e
 
     obj = schema_cls(**out)
@@ -493,12 +500,14 @@ class CoinMarketCapAPI:
             raise UnknownFiatCurrencyError(currency)
 
         if self.show_btc:
-            convert = "{},BTC".format(currency)
+            convert = f"{currency},BTC"
         else:
             convert = currency
 
         data = self.request(
-            "cryptocurrency/quotes/latest", symbol=symbol.upper(), convert=convert,
+            "cryptocurrency/quotes/latest",
+            symbol=symbol.upper(),
+            convert=convert,
         ).data.cast_to(QuoteRequestResponse)
         _, out = data.data.popitem()
         return out
@@ -510,10 +519,15 @@ class CoinMarketCapAPI:
 
     def get_crypto_currency_map(self) -> CryptoCurrencyMap:
         return self._request_cache(
-            "crypto_currency_map", "cryptocurrency/map", CryptoCurrencyMap, 86400
+            "crypto_currency_map",
+            "cryptocurrency/map",
+            CryptoCurrencyMap,
+            86400,
         )
 
-    def _request_cache(self, name: str, endpoint: str, fmt: Type[T], ttl: int) -> T:
+    def _request_cache(
+        self, name: str, endpoint: str, fmt: Type[T], ttl: int
+    ) -> T:
         out = self.cache.get(name)
         if out is None:
             currencies = self.request(endpoint).data.cast_to(fmt)
@@ -523,7 +537,9 @@ class CoinMarketCapAPI:
 
     def request(self, endpoint: str, **params) -> APIResponse:
         url = str(self.api_url / endpoint)
-        with requests.get(url, headers=self.request_headers, params=params) as response:
+        with requests.get(
+            url, headers=self.request_headers, params=params
+        ) as response:
             api_response = APIResponse.from_response(self, response)
             self.check(api_response)
 
@@ -545,7 +561,7 @@ def get_plugin_config(conf, name, default):
         return default
 
 
-@hook.onload
+@hook.onload()
 def init_api(bot):
     api.api_key = bot.config.get_api_key("coinmarketcap")
 
@@ -576,16 +592,10 @@ def alias_wrapper(alias):
         event.text = alias.name + " " + text
         return call_with_args(crypto_command, event)
 
-    func.__doc__ = """- Returns the current {} value""".format(alias.name)
+    func.__doc__ = f"""- Returns the current {alias.name} value"""
     func.__name__ = alias.name + "_alias"
 
     return func
-
-
-def init_aliases():
-    for alias in ALIASES:
-        _hook = alias_wrapper(alias)
-        globals()[_hook.__name__] = hook.command(*alias.cmds, autohelp=False)(_hook)
 
 
 # main command
@@ -603,35 +613,53 @@ def crypto_command(text, event):
     try:
         data = api.get_quote(ticker, currency)
     except UnknownFiatCurrencyError as e:
-        return "Unknown fiat currency {!r}".format(e.name)
+        return f"Unknown fiat currency {e.name!r}"
     except UnknownSymbolError as e:
-        return "Unknown cryptocurrency {!r}".format(e.name)
+        return f"Unknown cryptocurrency {e.name!r}"
     except APIError:
         event.reply("Unknown API error")
         raise
 
     quote = data.quote[currency]
-    change = quote.percent_change_24h
+    change = cast(Union[int, float], quote.percent_change_24h)
     if change > 0:
-        change_str = "$(dark_green)+{}%$(clear)".format(change)
+        change_str = colors.parse("$(dark_green)+{}%$(clear)").format(change)
     elif change < 0:
-        change_str = "$(dark_red){}%$(clear)".format(change)
+        change_str = colors.parse("$(dark_red){}%$(clear)").format(change)
     else:
-        change_str = "{}%".format(change)
+        change_str = f"{change}%"
 
     currency_sign = api.get_currency_sign(currency)
 
     if api.show_btc:
         btc_quote = data.quote["BTC"]
-        btc = "- {:,.7f} BTC ".format(btc_quote.price)
+        btc = f"- {float(btc_quote.price):,.7f} BTC "
     else:
         btc = ""
 
+    num_format = format_price(quote.price)
+
     return colors.parse(
-        ("{} ({}) // $(orange){}{:,.2f}$(clear) {} " + btc + "// {} change").format(
-            data.symbol, data.slug, currency_sign, quote.price, currency, change_str,
-        )
+        "{} ({}) // $(orange){}{}$(clear) {} " + btc + "// {} change"
+    ).format(
+        data.symbol,
+        data.slug,
+        currency_sign,
+        num_format,
+        currency,
+        change_str,
     )
+
+
+def format_price(price: Union[int, float, Real]) -> str:
+    price = float(price)
+    if price < 1:
+        precision = max(2, min(10, len(str(Decimal(str(price)))) - 2))
+        num_format = "{:01,.{}f}".format(price, precision)
+    else:
+        num_format = f"{price:,.2f}"
+
+    return num_format
 
 
 @hook.command("currencies", "currencylist", autohelp=False)
@@ -639,12 +667,20 @@ def currency_list():
     """- List all available currencies from the API"""
     currency_map = api.get_crypto_currency_map()
     currencies = sorted(
-        set((obj.symbol, obj.name) for obj in currency_map.data), key=itemgetter(0)
+        {(obj.symbol, obj.name) for obj in currency_map.data},
+        key=itemgetter(0),
     )
-    lst = ["{: <10} {}".format(symbol, name) for symbol, name in currencies]
+    lst = [f"{symbol: <10} {name}" for symbol, name in currencies]
     lst.insert(0, "Symbol     Name")
 
     return "Available currencies: " + web.paste("\n".join(lst))
 
 
-init_aliases()
+def make_alias(alias):
+    _hook = alias_wrapper(alias)
+    return hook.command(*alias.cmds, autohelp=False)(_hook)
+
+
+btc_alias = make_alias(Alias("btc", "bitcoin"))
+ltc_alias = make_alias(Alias("ltc", "litecoin"))
+doge_alias = make_alias(Alias("doge", "dogecoin"))

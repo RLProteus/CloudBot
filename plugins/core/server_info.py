@@ -1,6 +1,7 @@
 """
 Tracks verious server info like ISUPPORT tokens
 """
+
 from typing import Callable, Dict, MutableMapping, TypeVar
 
 from cloudbot import hook
@@ -12,7 +13,7 @@ DEFAULT_STATUS = (
 )
 
 
-@hook.on_start
+@hook.on_start()
 def do_isupport(bot):
     for conn in bot.connections.values():
         if conn.connected:
@@ -20,7 +21,7 @@ def do_isupport(bot):
             conn.send("VERSION")
 
 
-@hook.connect
+@hook.connect()
 def clear_isupport(conn):
     serv_info = conn.memory.setdefault("server_info", {})
     statuses = get_status_modes(serv_info, clear=True)
@@ -35,7 +36,7 @@ def clear_isupport(conn):
 
 
 K = TypeVar("K")
-V = TypeVar("V")
+V = TypeVar("V", bound=MutableMapping)
 
 
 def _get_set_clear(
@@ -43,7 +44,7 @@ def _get_set_clear(
     key: K,
     default_factory: Callable[[], V],
     *,
-    clear: bool = False
+    clear: bool = False,
 ) -> V:
     try:
         out = mapping[key]
@@ -60,11 +61,15 @@ def get_server_info(conn):
     return conn.memory["server_info"]
 
 
-def get_status_modes(serv_info, *, clear: bool = False) -> Dict[str, StatusMode]:
+def get_status_modes(
+    serv_info, *, clear: bool = False
+) -> Dict[str, StatusMode]:
     return _get_set_clear(serv_info, "statuses", dict, clear=clear)
 
 
-def get_channel_modes(serv_info, *, clear: bool = False) -> Dict[str, ChannelMode]:
+def get_channel_modes(
+    serv_info, *, clear: bool = False
+) -> Dict[str, ChannelMode]:
     return _get_set_clear(serv_info, "channel_modes", dict, clear=clear)
 
 
@@ -122,9 +127,8 @@ isupport_handlers = {
 def on_isupport(conn, irc_paramlist):
     serv_info = get_server_info(conn)
     token_data = serv_info["isupport_tokens"]
-    tokens = irc_paramlist[
-        1:-1
-    ]  # strip the nick and trailing ':are supported by this server' message
+    # strip the nick and trailing ':are supported by this server' message
+    tokens = irc_paramlist[1:-1]
     for token in tokens:
         name, _, value = token.partition("=")
         name = name.upper()

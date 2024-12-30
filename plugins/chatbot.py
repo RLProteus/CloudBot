@@ -1,16 +1,18 @@
+from typing import Optional
+
 from cleverwrap import CleverWrap
 
 from cloudbot import hook
 
 
 class APIContainer:
-    api = None
+    api: Optional[CleverWrap] = None
 
 
 container = APIContainer()
 
 
-@hook.on_start
+@hook.on_start()
 def make_api(bot):
     container.api = CleverWrap(bot.config.get_api_key("cleverbot"))
 
