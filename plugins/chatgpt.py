@@ -108,7 +108,7 @@ def chat_gpt(nick, text):
         messages = textwrap.wrap(answer,420)
         if len(messages) > 3:
             truncated_resp = messages[0:3]
-            truncated_resp.append(f"Find the rest of the answer here: {web.paste(answer,service='mozilla')}")
+            truncated_resp.append(f"Find the rest of the answer here: {web.paste(answer,ext='md',service='mozilla')}")
             return truncated_resp
         return messages
     return textwrap.wrap(

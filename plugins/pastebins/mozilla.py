@@ -15,10 +15,13 @@ class Mozilla(Pastebin):
             encoded = data
 
         try:
-            if ext == 'txt':
-                lexer = '_text'
-            else:
+            if ext == 'code':
                 lexer = '_code'
+            elif ext == 'md':
+                lexer = '_markdown'
+            else:
+                lexer = '_text'
+
             form_data = {'format': 'json', 'content': encoded, 'lexer': lexer }
             r = requests.post(f'{self.url}/api/', data=form_data)
             r.raise_for_status()
@@ -34,7 +37,7 @@ class Mozilla(Pastebin):
                 return f'{j['url']}'
 
             raise ServiceHTTPError(j['message'], r)
-        
+
 @hook.on_start()
 def register():
     pastebins.register('mozilla', Mozilla())
