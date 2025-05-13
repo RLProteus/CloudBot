@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from sqlalchemy import Table, Column, String, Integer
 from sqlalchemy.sql import insert, func
+from sqlalchemy.orm import load_only
 
 import textwrap
 import shutil
@@ -58,8 +59,8 @@ def build_context(nick, text, role):
         idle_timestamp = datetime.strptime(CONTEXT.get("idle_timestamp"),'%m/%d/%y %H:%M:%S')
         if abs(datetime.now() - idle_timestamp).seconds > 300:
             drop_context()
-            random_prompt = systemPrompts.select().order_by(func.random()).limit(1).execute()
-            CONTEXT.get("messages")[0].update({"content": random_prompt.c.prompt})
+            random_prompt = systemPrompts.select().order_by(func.random()).limit(1).execute().first()
+            CONTEXT.get("messages")[0].update({"content": random_prompt.prompt})
     CONTEXT.get("messages").append({
         "role": role,
         "content": f"{text}",
@@ -195,7 +196,5 @@ def gpt_del_prompt(nick, chan, text, event):
 
 @hook.command("gpt_get_random_system", autohelp=False)
 def get_random_prompt():
-  random_prompt = systemPrompts.select().order_by(func.random()).limit(1).execute()
-  print(random_prompt.first().prompt)
-  print(str(random_prompt.first()))
-  return random_prompt.first().prompt
+  random_prompt = systemPrompts.select().order_by(func.random()).limit(1).execute().first()
+  return random_prompt.prompt
