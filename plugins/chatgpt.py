@@ -1,4 +1,8 @@
 from datetime import datetime, timedelta
+from sqlalchemy import Table, Column, String, Integer
+from sqlalchemy.sql import insert, func
+from sqlalchemy.orm import load_only
+
 import textwrap
 import shutil
 import random
@@ -9,7 +13,15 @@ from google.cloud import storage
 from cloudbot import hook
 from cloudbot.bot import bot
 from cloudbot.util import web
+from cloudbot.util import database
 
+systemPrompts = Table(
+    'gpt_system_prompts',
+    database.metadata,
+    Column('id', Integer, primary_key=True),
+    Column("author", String),
+    Column("prompt", String),
+)
 
 RATELIMIT = {}
 CONTEXT = {
@@ -47,7 +59,8 @@ def build_context(nick, text, role):
         idle_timestamp = datetime.strptime(CONTEXT.get("idle_timestamp"),'%m/%d/%y %H:%M:%S')
         if abs(datetime.now() - idle_timestamp).seconds > 300:
             drop_context()
-
+            random_prompt = systemPrompts.select().order_by(func.random()).limit(1).execute().first()
+            CONTEXT.get("messages")[0].update({"content": random_prompt.prompt})
     CONTEXT.get("messages").append({
         "role": role,
         "content": f"{text}",
@@ -152,3 +165,36 @@ def chat_gpt_image(nick, chan, text, event):
         f"ChatGPT failed with error code {resp.status_code}",
         250
     )
+
+@hook.command("gpt_add_system", autohelp=False)
+def gpt_add_prompt(nick, chan, text, event):
+    """
+    gpt_add_prompt allows users to submit system prompts. On a context-less
+    request to GPT, the system prompt will be randomly selected from the database.
+    """
+    if not text:
+        return "Usage: .gpt_add_prompt <prompt>"
+    insert(systemPrompts).values(
+        author=nick,
+        prompt=text
+    ).compile().execute()
+    return "System prompt added !"
+
+@hook.command("gpt_get_systems", autohelp=False)
+def gpt_get_prompts():
+    """
+    gpt_get_prompts returns the list of system prompts stored in database preprend with the prompt ID
+    """
+    prompt_list = systemPrompts.select().execute().fetchall()
+    return ' ; '.join([f"{p.id}: {p.prompt}" for p in prompt_list])
+
+
+@hook.command("gpt_del_system", permissions=["op"], autohelp=False)
+def gpt_del_prompt(nick, chan, text, event):
+    systemPrompts.delete().where(systemPrompts.c.id == text).compile().execute()
+    return f"Prompt {text} deleted."
+
+@hook.command("gpt_get_random_system", autohelp=False)
+def get_random_prompt():
+  random_prompt = systemPrompts.select().order_by(func.random()).limit(1).execute().first()
+  return random_prompt.prompt
