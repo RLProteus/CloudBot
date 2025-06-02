@@ -350,7 +350,7 @@ class Hastebin(Pastebin):
             j = r.json()
 
             if r.status_code is requests.codes.ok:
-                return f'{self.url}/share/{j['key']}.{ext}'
+                return f"{self.url}/share/{j['key']}.{ext}"
 
             raise ServiceHTTPError(j['message'], r)
 
