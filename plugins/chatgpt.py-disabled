@@ -3,6 +3,9 @@ from sqlalchemy import Table, Column, String, Integer
 from sqlalchemy.sql import insert, func
 from sqlalchemy.orm import load_only
 
+from agents import Agent, HandoffInputData, Runner, function_tool, handoff, trace, WebSearchTool
+from agents.extensions import handoff_filters
+
 import textwrap
 import shutil
 import random
@@ -198,3 +201,5 @@ def gpt_del_prompt(nick, chan, text, event):
 def get_random_prompt():
   random_prompt = systemPrompts.select().order_by(func.random()).limit(1).execute().first()
   return random_prompt.prompt
+
+
