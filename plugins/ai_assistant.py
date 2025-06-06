@@ -3,6 +3,7 @@ import string
 import json
 import textwrap
 from base64 import b64decode
+from datetime import datetime, timedelta
 
 from agents import (
     Agent,
@@ -24,7 +25,8 @@ from cloudbot.util import web
 
 set_default_openai_key(bot.config.get_api_key("openai"))
 
-CONTEXT: list[TResponseInputItem] = []
+CONTEXT_TIMESTAMP = ""
+CONTEXT: list[TResponseInputItem]
 CONTEXT_DEBUG = False
 
 @function_tool()
@@ -139,19 +141,36 @@ def debug_context():
         CONTEXT_DEBUG = True
         return("Debugging enabled. Context will be logged.")
 
+def check_idle_context(thresh: int) -> bool:
+    """
+    This method returns true if the context has been idle for more than threshold in seconds. 
+    """
+    global CONTEXT_TIMESTAMP
+    if CONTEXT_TIMESTAMP is not "":
+       idle_timestamp = datetime.strptime(CONTEXT_TIMESTAMP, '%m/%d/%y %H:%M:%S')
+       if abs(datetime.now() - idle_timestamp).seconds > thresh:
+           return True
+    return False
+
 def build_context(nick: str, text: str) -> None:
     """
     Builds the context for the agent based on the user's input.
+    Drop context if last entry is older than 300s
 
     args:
         nick: The nickname of the user making the request.
         text: The text of the request.
     """
+    global CONTEXT
+    global CONTEXT_TIMESTAMP
+    if check_idle_context(300):
+        CONTEXT.clear()
     CONTEXT.append({
         "content": f"{nick} says: {text}",
         "role": "user",
         "type": "message"
     })
+    CONTEXT_TIMESTAMP = datetime.now().strftime('%m/%d/%y %H:%M:%S')
     if CONTEXT_DEBUG:
         with open("context.json",'w') as f:
             f.write(json.dumps(CONTEXT, indent=2))
