@@ -34,7 +34,7 @@ class Dpaste(Pastebin):
             j = r.json()
 
             if r.status_code is requests.codes.ok:
-                return f'{j['url']}'
+                return f"{j['url']}"
 
             raise ServiceHTTPError(j['message'], r)
 
