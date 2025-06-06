@@ -3,10 +3,10 @@ from requests import HTTPError, RequestException
 from cloudbot import hook
 from cloudbot.util.web import Pastebin, pastebins, ServiceHTTPError, ServiceError
 
-class Mozilla(Pastebin):
+class Dpaste(Pastebin):
     def __init__(self):
         super().__init__()
-        self.url = "https://paste.mozilla.org/"
+        self.url = "https://dpaste.org/"
 
     def paste(self, data, ext):
         if isinstance(data, str):
@@ -40,7 +40,7 @@ class Mozilla(Pastebin):
 
 @hook.on_start()
 def register():
-    pastebins.register('mozilla', Mozilla())
+    pastebins.register('dpaste', Dpaste())
 @hook.on_stop()
 def unregister():
-    pastebins.remove('mozilla')
+    pastebins.remove('dpaste')

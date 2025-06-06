@@ -7,9 +7,10 @@ from base64 import b64decode
 from agents import (
     Agent,
     Runner,
+    RunResult,
     WebSearchTool,
     ImageGenerationTool,
-    FunctionTool,
+    CodeInterpreterTool,
     function_tool,
     set_default_openai_key,
     TResponseInputItem
@@ -24,6 +25,7 @@ from cloudbot.util import web
 set_default_openai_key(bot.config.get_api_key("openai"))
 
 CONTEXT: list[TResponseInputItem] = []
+CONTEXT_DEBUG = False
 
 @function_tool()
 @hook.command("dump_context", autohelp=False)
@@ -45,6 +47,16 @@ web_agent = Agent(
         WebSearchTool(),
     ]
 )
+code_agent = Agent(
+    name="Code Assistant",
+    instructions="Be a helpful assistant. You can write code and answer programming questions.",
+    handoff_description="Use this agent for writing code and answering programming questions.",
+    tools=[
+        CodeInterpreterTool(
+                tool_config={"type": "code_interpreter", "container": {"type": "auto"}},
+            )
+    ]
+)
 
 default_agent = Agent(
     name="Gloria",
@@ -59,9 +71,75 @@ default_agent = Agent(
             "model": "gpt-image-1",
             "size": "1024x1024"
         }),
+        code_agent.as_tool(
+            tool_name="code_interpreter",
+            tool_description="use to run code interpreter tasks such as running code and answering math questions."
+        ),
         dump_context
     ]
 )
+
+def image_upload(image_data: str) -> str:
+    """
+    Uploads an image to a Google Cloud Storage bucket and returns the public URL.
+
+    args:
+        image_data: The base64 encoded image data.
+    returns:
+        The public URL of the uploaded image.
+    """
+    with open("temp.png",'wb') as f:
+        f.write(b64decode(image_data))
+    upload_name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=7)) + '.png'
+    storage_client = storage.Client()
+    bucket = storage_client.bucket("gavibot-ai-images")
+    blob = bucket.blob(upload_name)
+    blob.upload_from_filename("temp.png")
+    return f"https://storage.googleapis.com/gavibot-ai-images/{upload_name}"
+
+def parse_response(result: RunResult) -> str:
+    """
+    Parses the response from the agent and formats it for output.
+
+    args:
+        result: The raw response from the agent.
+    returns:
+        A formatted string containing the response.
+    """
+    output = f"[{result.last_agent.name}]: {result.final_output}"
+
+    for item in result.new_items:
+        if (
+            item.type == "tool_call_item"
+            and item.raw_item.type == "image_generation_call"
+            and (img_result := item.raw_item.result)
+        ):
+            gcp_filename = image_upload(img_result)
+            output += f" Image link: https://storage.googleapis.com/gavibot-ai-images/{gcp_filename}"
+            CONTEXT.append({"id": item.raw_item.id})
+        else:
+            CONTEXT.append(item.to_input_item())
+    messages = textwrap.wrap(output,420)
+    if len(messages) > 3:
+        truncated_resp = messages[0:3]
+        truncated_resp.append(f"Find the rest of the answer here: {web.paste(output,ext='md',service='dpaste')}")
+        return truncated_resp
+    return messages
+
+@hook.command("gloria_debug", autohelp=False)
+def debug_context():
+    """
+    Toggles logging for the current context.
+    """
+    global CONTEXT_DEBUG
+    if CONTEXT_DEBUG:
+        CONTEXT_DEBUG = False
+        return "Debugging disabled. Context will not be logged."
+    else:
+        CONTEXT_DEBUG = True
+        return("Debugging enabled. Context will be logged.")
+
+
 
 @hook.command("gloria","gpt","gpt_image", autohelp=False)
 async def gpt_multi_agent(nick, text):
@@ -77,31 +155,9 @@ async def gpt_multi_agent(nick, text):
 
     CONTEXT.append({"content": f"{nick} says: {text}", "role": "user", "type": "message"})
     result = await Runner.run(default_agent, CONTEXT)
+    if CONTEXT_DEBUG:
+        with open("context.json",'w') as f:
+            f.write(json.dumps(CONTEXT, indent=2))
 
-    with open("context.json",'w') as f:
-        f.write(json.dumps(CONTEXT, indent=2))
-    output = f"[{result.last_agent.name}]: {result.final_output}"
-    for item in result.new_items:
-        if (
-            item.type == "tool_call_item"
-            and item.raw_item.type == "image_generation_call"
-            and (img_result := item.raw_item.result)
-        ):
-            with open("temp.png",'wb') as f:
-                f.write(b64decode(img_result))
-            upload_name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=7)) + '.png'
-            storage_client = storage.Client()
-            bucket = storage_client.bucket("gavibot-ai-images")
-            blob = bucket.blob(upload_name)
-            blob.upload_from_filename("temp.png")
-            output += f" Image link: https://storage.googleapis.com/gavibot-ai-images/{upload_name}"
-            CONTEXT.append({"id": item.raw_item.id})
-        else:
-            CONTEXT.append(item.to_input_item())
-    messages = textwrap.wrap(output,420)
-    if len(messages) > 3:
-        truncated_resp = messages[0:3]
-        truncated_resp.append(f"Find the rest of the answer here: {web.paste(output,ext='md',service='mozilla')}")
-        return truncated_resp
-    return messages
-
+    response = parse_response(result)
+    return response
