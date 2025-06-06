@@ -28,10 +28,10 @@ CONTEXT: list[TResponseInputItem] = []
 CONTEXT_DEBUG = False
 
 @function_tool()
-@hook.command("dump_context", autohelp=False)
-async def dump_context():
+@hook.command("drop_context", autohelp=False)
+async def drop_context():
     """
-    dump_context deletes the current context and history of the conversation.
+    drop_context deletes the current context and history of the conversation.
     """
     global CONTEXT
     CONTEXT = []
@@ -75,7 +75,7 @@ default_agent = Agent(
             tool_name="code_interpreter",
             tool_description="use to run code interpreter tasks such as running code and answering math questions."
         ),
-        dump_context
+        drop_context
     ]
 )
 
@@ -139,6 +139,22 @@ def debug_context():
         CONTEXT_DEBUG = True
         return("Debugging enabled. Context will be logged.")
 
+def build_context(nick: str, text: str) -> None:
+    """
+    Builds the context for the agent based on the user's input.
+
+    args:
+        nick: The nickname of the user making the request.
+        text: The text of the request.
+    """
+    CONTEXT.append({
+        "content": f"{nick} says: {text}",
+        "role": "user",
+        "type": "message"
+    })
+    if CONTEXT_DEBUG:
+        with open("context.json",'w') as f:
+            f.write(json.dumps(CONTEXT, indent=2))
 
 
 @hook.command("gloria","gpt","gpt_image", autohelp=False)
@@ -152,12 +168,7 @@ async def gpt_multi_agent(nick, text):
     returns:
         A list of messages containing the response from the agents.
     """
-
-    CONTEXT.append({"content": f"{nick} says: {text}", "role": "user", "type": "message"})
+    build_context(nick, text)
     result = await Runner.run(default_agent, CONTEXT)
-    if CONTEXT_DEBUG:
-        with open("context.json",'w') as f:
-            f.write(json.dumps(CONTEXT, indent=2))
-
     response = parse_response(result)
     return response
