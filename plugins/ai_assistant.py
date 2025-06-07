@@ -26,7 +26,7 @@ from cloudbot.util import web
 set_default_openai_key(bot.config.get_api_key("openai"))
 
 CONTEXT_TIMESTAMP = ""
-CONTEXT: list[TResponseInputItem]
+CONTEXT: list[TResponseInputItem] = []
 CONTEXT_DEBUG = False
 
 @function_tool()
@@ -161,7 +161,7 @@ def build_context(nick: str, text: str) -> None:
         nick: The nickname of the user making the request.
         text: The text of the request.
     """
-    global CONTEXT
+    
     global CONTEXT_TIMESTAMP
     if check_idle_context(300):
         CONTEXT.clear()
