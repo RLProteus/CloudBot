@@ -35,7 +35,7 @@ python3 -m cloudbot
 Cloudbot works in Docker too. For development purposes, you may run the following command:
 
 ```bash
-$ docker run -it -v "${PWD}:/code" python:3.8 bash
+$ docker run -it -v "${PWD}:/code" python:3.12 bash
 root@799cd5dca084:/# cd /code
 root@799cd5dca084:/# pip install -r requirements.txt
 root@799cd5dca084:/# python -m cloudbot

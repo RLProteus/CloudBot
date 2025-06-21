@@ -1,9 +1,12 @@
+import re
 import random
 import string
 import json
 import textwrap
 from base64 import b64decode
-from datetime import datetime, timedelta
+from datetime import datetime
+import requests
+from requests.exceptions import RequestException
 
 from agents import (
     Agent,
@@ -40,6 +43,21 @@ async def drop_context():
 
     return "The context has been cleared."
 
+@function_tool()
+async def fetch_url(url: str) -> str:
+  """
+  fetch_url returns the string representation of the content available at a given HTTP URL.
+
+  Args:
+      url: url The url to be fetched
+  """
+  print("called tool fetch_url")
+  try:
+    r = requests.get(url, headers={"User-Agent": "gloria-irc"})
+    r.raise_for_status()
+    return r.content.decode(encoding=r.encoding)
+  except (ValueError, RequestException) as e:
+    return repr(e)
 
 web_agent = Agent(
     name="Web Assistant",
@@ -77,7 +95,8 @@ default_agent = Agent(
             tool_name="code_interpreter",
             tool_description="use to run code interpreter tasks such as running code and answering math questions."
         ),
-        drop_context
+        drop_context,
+        fetch_url
     ]
 )
 
@@ -156,7 +175,7 @@ def build_context(nick: str, text: str) -> None:
     """
     Builds the context for the agent based on the user's input.
     Drop context if last entry is older than 300s
-
+    If the text contains a link to an image, it will extract the link and append it to context in its own object.
     args:
         nick: The nickname of the user making the request.
         text: The text of the request.
@@ -170,6 +189,12 @@ def build_context(nick: str, text: str) -> None:
         "role": "user",
         "type": "message"
     })
+    match = re.search(r'(https?://\S+\.(?:jpe?g|png|gif|bmp|webp))\b', text)
+    if match:
+      CONTEXT.append({
+        "role": "user",
+        "content": [{"type": "input_image", "detail": "auto", "image_url": match.group(1)}]
+      })
     CONTEXT_TIMESTAMP = datetime.now().strftime('%m/%d/%y %H:%M:%S')
     if CONTEXT_DEBUG:
         with open("context.json",'w') as f:
