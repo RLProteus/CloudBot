@@ -136,7 +136,7 @@ def parse_response(result: RunResult) -> str:
             and (img_result := item.raw_item.result)
         ):
             gcp_filename = image_upload(img_result)
-            output += f" Image link: https://storage.googleapis.com/gavibot-ai-images/{gcp_filename}"
+            output += f" Image link: {gcp_filename}"
             CONTEXT.append({"id": item.raw_item.id})
         else:
             CONTEXT.append(item.to_input_item())
