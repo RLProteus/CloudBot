@@ -1,7 +1,7 @@
 import random
-import re
 import operator
 
+from datetime import datetime
 from time import time
 from collections import defaultdict
 from sqlalchemy import Table, Column, String, Integer, PrimaryKeyConstraint, desc
@@ -11,40 +11,31 @@ from cloudbot.event import EventType
 from cloudbot.util import database
 
 duck_tail = "・゜゜・。。・゜゜"
-duck = ["\_o< ", "\_O< ", "\_0< ", "\_\u00f6< ", "\_\u00f8< ", "\_\u00f3< "]
+duck = ["\_o< ", "\_O< ", "\_0< ", "\_ö< ", "\_ø< ", "\_ó< "]
 duck_noise = ["QUACK!", "FLAP FLAP!", "quack!"]
 
-table = Table(
-    'duck_hunt_points2024Q2',
-    database.metadata,
-    Column('network', String),
-    Column('name', String),
-    Column('shot', Integer),
-    Column('befriend', Integer),
-    Column('chan', String),
-    PrimaryKeyConstraint('name', 'chan','network')
-    )
+# The active season table – set at startup and rotated each quarter
+table = None
 
 optout = Table(
     'nohunt',
     database.metadata,
     Column('network', String),
     Column('chan', String),
-    PrimaryKeyConstraint('chan','network')
+    PrimaryKeyConstraint('chan', 'network')
     )
 
 
-
 """
-game_status structure 
-{ 
+game_status structure
+{
     'network':{
         '#chan1':{
-            'duck_status':0|1|2, 
-            'next_duck_time':'integer', 
+            'duck_status':0|1|2,
+            'next_duck_time':'integer',
             'game_on':0|1,
             'no_duck_kick': 0|1,
-            'duck_time': 'float', 
+            'duck_time': 'float',
             'shoot_time': 'float',
             'messages': integer,
             'masks' : list
@@ -53,23 +44,115 @@ game_status structure
 }
 """
 
-MSG_DELAY = 10 + random.randint(0,5)
-MASK_REQ = 3 + random.randint(0,2)
+MSG_DELAY = 10 + random.randint(0, 5)
+MASK_REQ = 3 + random.randint(0, 2)
 scripters = defaultdict(int)
 game_status = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
 
+# Season state
+_current_season = None
+_season_tables = {}
 
-@hook.on_start()
-def load_optout(db):
-    """load a list of channels duckhunt should be off in. Right now I am being lazy and not
-    differentiating between networks this should be cleaned up later."""
+
+def get_season_label():
+    """Return the current quarter label, e.g. '2026Q2'."""
+    now = datetime.utcnow()
+    quarter = (now.month - 1) // 3 + 1
+    return "{}Q{}".format(now.year, quarter)
+
+
+def make_season_table(label):
+    """Return (creating if needed) the SQLAlchemy Table for a given season label."""
+    if label in _season_tables:
+        return _season_tables[label]
+    tname = 'duck_hunt_points{}'.format(label)
+    # Re-use an existing metadata entry if present (e.g. after a reload)
+    if tname in database.metadata.tables:
+        tbl = database.metadata.tables[tname]
+    else:
+        tbl = Table(
+            tname,
+            database.metadata,
+            Column('network', String),
+            Column('name', String),
+            Column('shot', Integer),
+            Column('befriend', Integer),
+            Column('chan', String),
+            PrimaryKeyConstraint('name', 'chan', 'network')
+        )
+    _season_tables[label] = tbl
+    return tbl
+
+
+def _reload_optout(db):
+    """Reload the opt-out channel list from the database."""
     global opt_out
     opt_out = []
     chans = db.execute(select([optout.c.chan]))
     if chans:
         for row in chans:
-            chan = row["chan"]
-            opt_out.append(chan)
+            opt_out.append(row["chan"])
+
+
+@hook.on_start()
+def load_game_data(db, bot):
+    """Load opt-out channels and initialize the current season's score table."""
+    global table, _current_season
+
+    _reload_optout(db)
+
+    label = get_season_label()
+    tbl = make_season_table(label)
+    tbl.create(bind=bot.db_engine, checkfirst=True)
+    _current_season = label
+    table = tbl
+
+
+@hook.periodic(3600, initial_interval=3600)
+def check_season_rollover(bot):
+    """Every hour check if the calendar quarter has changed and rotate to a new table."""
+    global table, _current_season
+
+    if _current_season is None:
+        return
+
+    label = get_season_label()
+    if label == _current_season:
+        return
+
+    # Quarter boundary crossed – create the new table and announce everywhere
+    new_tbl = make_season_table(label)
+    new_tbl.create(bind=bot.db_engine, checkfirst=True)
+
+    old_season = _current_season
+    _current_season = label
+    table = new_tbl
+
+    for network in list(game_status.keys()):
+        if network not in bot.connections:
+            continue
+        conn = bot.connections[network]
+        if not conn.ready:
+            continue
+        for chan in list(game_status[network].keys()):
+            if game_status[network][chan].get('game_on') == 1:
+                conn.message(chan, (
+                    "\x02★ A new Duck Hunt season has begun! ★\x02 "
+                    "Season \x02{}\x02 is now active. "
+                    "Season {} has ended – scores have been reset. "
+                    "Good luck this quarter!"
+                ).format(label, old_season))
+
+
+@hook.command("duckseason", autohelp=False)
+def duck_season(chan):
+    """Shows the current duck hunt season."""
+    if chan in opt_out:
+        return
+    if _current_season:
+        return "The current duck hunt season is \x02{}\x02.".format(_current_season)
+    return "The duck hunt season has not been initialized yet."
+
 
 @hook.event([EventType.message, EventType.action], singlethread=True)
 def incrementMsgCounter(event, conn):
@@ -98,6 +181,7 @@ def start_hunt(bot, chan, message, conn):
     set_ducktime(chan, conn)
     message("Ducks have been spotted nearby. See how many you can shoot or save. use .bang to shoot or .befriend to save them. NOTE: Ducks now appear as a function of time and channel activity.", chan)
     message("NEW CHALLENGE: Ducks are now worth points! Points calculated based on when the duck was deployed and when it was shot or befriended. The longer you wait, the more points you get. Up to a maximum of 10 points per duck. Example: Shooting a duck 4 seconds after it appears will grant you 4 points.", chan)
+    message("Current season: \x02{}\x02. Use .duckseason to check the active season at any time.".format(_current_season or "unknown"), chan)
 
 
 def set_ducktime(chan, conn):
@@ -254,7 +338,7 @@ def bang(nick, chan, message, db, conn, notice):
             conn.cmd("KICK", chan, nick, out)
             return "Get out of here! There is no duck. You missed the duck by {:.3f} seconds!".format(shoot - deploy)
         return "There is no duck. What are you shooting at? You missed the duck by {:.3f} seconds!".format(shoot - deploy)
-    else: 
+    else:
         game_status[network][chan]['shoot_time'] = time()
         deploy = game_status[network][chan]['duck_time']
         shoot = game_status[network][chan]['shoot_time']
@@ -265,7 +349,7 @@ def bang(nick, chan, message, db, conn, notice):
         chance = hit_or_miss(deploy, shoot)
         if not random.random() <= chance and chance > .05:
             out = random.choice(miss) + " You can try again in 7 seconds." + " You pulled the trigger in {:.3f} seconds!".format(shoot - deploy)
-            scripters[nick.lower()] = shoot + 7 
+            scripters[nick.lower()] = shoot + 7
             return out
         if chance == .05:
             out += "You pulled the trigger in {} seconds, that's mighty fast. Are you sure you aren't a script? Take a 2 hour cool down.".format(str(shoot - deploy))
@@ -276,14 +360,14 @@ def bang(nick, chan, message, db, conn, notice):
                 message(out)
         game_status[network][chan]['duck_status'] = 2
         points = 0
-        if int(shoot - deploy) < 10: 
+        if int(shoot - deploy) < 10:
             points = int(shoot - deploy)
 
-        
-        if int(shoot - deploy) >= 10: 
+
+        if int(shoot - deploy) >= 10:
             points = 10
 
-                
+
         score = db.execute(select([table.c.shot]) \
             .where(table.c.network == conn.name) \
             .where(table.c.chan == chan.lower()) \
@@ -344,11 +428,11 @@ def befriend(nick, chan, message, db, conn, notice):
 
         game_status[network][chan]['duck_status'] = 2
         points = 0
-        if int(shoot - deploy) < 10: 
+        if int(shoot - deploy) < 10:
             points = int(shoot - deploy)
 
-        
-        if int(shoot - deploy) >= 10: 
+
+        if int(shoot - deploy) >= 10:
             points = 10
 
         score = db.execute(select([table.c.befriend]) \
@@ -387,7 +471,7 @@ def friends(text, chan, conn, db):
         scores = db.execute(select([table.c.name, table.c.befriend]) \
             .where(table.c.network == conn.name) \
             .order_by(desc(table.c.befriend)))
-        if scores:    
+        if scores:
             for row in scores:
                 if row[1] == 0:
                     continue
@@ -413,7 +497,7 @@ def friends(text, chan, conn, db):
             return "it appears no on has friended any ducks yet."
 
     topfriends = sorted(friends.items(), key=operator.itemgetter(1), reverse = True)
-    out += ' • '.join(["{}: {}".format('\x02' + k[:1] + u'\u200b' + k[1:] + '\x02', str(v))  for k, v in topfriends])
+    out += ' • '.join(["{}: {}".format('\x02' + k[:1] + u'​' + k[1:] + '\x02', str(v))  for k, v in topfriends])
     out = smart_truncate(out)
     return out
 
@@ -456,7 +540,7 @@ def killers(text, chan, conn, db):
             return "it appears no on has killed any ducks yet."
 
     topkillers = sorted(killers.items(), key=operator.itemgetter(1), reverse = True)
-    out += ' • '.join(["{}: {}".format('\x02' + k[:1] + u'\u200b' + k[1:] + '\x02', str(v))  for k, v in topkillers])
+    out += ' • '.join(["{}: {}".format('\x02' + k[:1] + u'​' + k[1:] + '\x02', str(v))  for k, v in topkillers])
     out = smart_truncate(out)
     return out
 
@@ -494,7 +578,7 @@ def hunt_opt_out(text, chan, db, conn):
             chan = channel.lower())
         db.execute(query)
         db.commit()
-        load_optout(db)
+        _reload_optout(db)
         return "The duckhunt has been successfully disabled in {}.".format(channel)
     if command.lower() == "remove":
         if not channel in opt_out:
@@ -502,7 +586,7 @@ def hunt_opt_out(text, chan, db, conn):
         delete = optout.delete(optout.c.chan == channel.lower())
         db.execute(delete)
         db.commit()
-        load_optout(db)
+        _reload_optout(db)
 
 @hook.command("duckmerge", permissions=["botcontrol"])
 def duck_merge(text, conn, db, message):
@@ -625,10 +709,10 @@ def duck_pull(chan, message, bot, notice):
         conn = bot.connections[network]
         if not conn.ready:
             continue
-        
+
         active = 1
-        duck_status = 0 
-        next_duck = time() 
+        duck_status = 0
+        next_duck = time()
         chan_messages = MSG_DELAY
         chan_masks = MASK_REQ
         if active == 1 and duck_status == 0 and next_duck <= time() and chan_messages >= MSG_DELAY and chan_masks >= MASK_REQ:
@@ -644,7 +728,3 @@ def duck_pull(chan, message, bot, notice):
         #    game_status[network][chan]['duck_status'] = 2
         #    set_ducktime(chan, conn)
         continue
-        
-
-    
-    
